@@ -145,7 +145,7 @@ class GeminiSummarizer(LLMProvider):
     ):
         raw_key = api_key if api_key is not None else os.getenv("GEMINI_API_KEY", "")
         self.api_key = raw_key.strip()
-        self.model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        self.model = model or os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
         self.timeout = timeout or float(os.getenv("GEMINI_TIMEOUT", "30"))
         self.client = client
         clean_model = self.model[7:] if self.model.startswith("models/") else self.model

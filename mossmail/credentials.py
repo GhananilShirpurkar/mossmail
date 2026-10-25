@@ -14,7 +14,6 @@ logger = logging.getLogger("mossmail.credentials")
 SERVICE_NAME = "mossmail"
 DEFAULT_FALLBACK_FILE = Path(".local/credentials.json")
 SUPPORTED_GEMINI_MODELS = (
-    "gemini-2.5-flash",
     "gemini-1.5-flash",
     "gemini-1.5-pro",
 )
@@ -59,7 +58,7 @@ class CredentialStore:
                 val = self.keyring.get_password(SERVICE_NAME, key_name)
                 if val:
                     return val
-            except KeyringError:
+            except (KeyringError, Exception):
                 logger.info("keyring_read_unavailable")
 
         # 2. Try consented fallback file if it exists
@@ -103,7 +102,7 @@ class CredentialStore:
                 self.keyring.set_password(SERVICE_NAME, key_name, secret_clean)
                 self._prune_fallback_key(key_name)
                 return "keyring"
-            except KeyringError:
+            except (KeyringError, Exception):
                 logger.info("keyring_write_failed")
 
         # Keyring unavailable or failed
@@ -126,7 +125,7 @@ class CredentialStore:
         if self.is_keyring_usable():
             try:
                 self.keyring.delete_password(SERVICE_NAME, key_name)
-            except (KeyringError, PasswordDeleteError):
+            except (KeyringError, PasswordDeleteError, Exception):
                 pass
 
         # 2. Delete from fallback file
@@ -223,7 +222,7 @@ class CredentialStore:
 
 def validate_gemini_key(
     api_key: str,
-    model: str = "gemini-2.5-flash",
+    model: str = "gemini-1.5-flash",
     timeout: float = 10.0,
     client: httpx.Client | None = None,
 ) -> tuple[bool, str]:

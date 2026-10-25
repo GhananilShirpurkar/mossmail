@@ -190,16 +190,20 @@ if view == "Settings":
             current_model = cred_store.get_secret("gemini_model") or SUPPORTED_GEMINI_MODELS[0]
 
             if has_key:
-                storage_desc = (
-                    "Secure OS Keyring"
-                    if key_status == "keyring"
-                    else "Local file (.local/credentials.json, mode 0600)"
-                    if key_status == "unencrypted_file"
-                    else "Environment Variable"
-                )
-                st.success(
-                    f"Gemini API key is configured ({storage_desc}). Value is protected and never displayed."
-                )
+                if key_status == "env":
+                    st.info(
+                        "Gemini API key is detected from your environment variable (GEMINI_API_KEY). "
+                        "To remove or change it, unset or modify GEMINI_API_KEY in your shell or .env file."
+                    )
+                else:
+                    storage_desc = (
+                        "Secure OS Keyring"
+                        if key_status == "keyring"
+                        else "Local file (.local/credentials.json, mode 0600)"
+                    )
+                    st.success(
+                        f"Gemini API key is configured ({storage_desc}). Value is protected and never displayed."
+                    )
                 model_idx = (
                     SUPPORTED_GEMINI_MODELS.index(current_model)
                     if current_model in SUPPORTED_GEMINI_MODELS
@@ -215,10 +219,11 @@ if view == "Settings":
                         )
                         st.rerun()
 
-                if st.button("Remove Gemini API Key", type="secondary"):
-                    cred_store.delete_secret("gemini_api_key")
-                    cred_store.delete_secret("gemini_model")
-                    st.rerun()
+                if key_status in ("keyring", "unencrypted_file"):
+                    if st.button("Remove Gemini API Key", type="secondary"):
+                        cred_store.delete_secret("gemini_api_key")
+                        cred_store.delete_secret("gemini_model")
+                        st.rerun()
             else:
                 st.caption(
                     "Bring your own API key from Google AI Studio. The key is stored locally "
