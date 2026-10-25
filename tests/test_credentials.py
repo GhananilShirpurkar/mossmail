@@ -134,11 +134,11 @@ def test_env_var_fallback(tmp_path, monkeypatch):
 def test_validate_gemini_key_success():
     def mock_handler(request: httpx.Request):
         assert request.headers.get("x-goog-api-key") == "valid-key"
-        assert "/models/gemini-1.5-flash" in str(request.url)
-        return httpx.Response(200, json={"name": "models/gemini-1.5-flash"})
+        assert "/models/gemini-3.8-flash" in str(request.url)
+        return httpx.Response(200, json={"name": "models/gemini-3.8-flash"})
 
     client = httpx.Client(transport=httpx.MockTransport(mock_handler))
-    ok, msg = validate_gemini_key("valid-key", model="gemini-1.5-flash", client=client)
+    ok, msg = validate_gemini_key("valid-key", model="gemini-3.8-flash", client=client)
     assert ok is True
     assert "validated successfully" in msg
 
@@ -217,8 +217,14 @@ def test_broken_keyring_fails_safe(tmp_path):
 
 
 def test_validate_gemini_key_rejects_deprecated_or_gated_models():
-    # gemini-2.0-flash is shut down, gemini-2.5-flash is gated/uncertain
-    for model in ("gemini-2.0-flash", "gemini-2.5-flash", "unknown-model"):
+    # gemini-2.0 and 1.5 families are shut down; 2.5 is gated/uncertain
+    for model in (
+        "gemini-2.0-flash",
+        "gemini-2.5-flash",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
+        "unknown-model",
+    ):
         ok, msg = validate_gemini_key("key", model=model)
         assert ok is False
         assert "not in supported models" in msg
@@ -277,12 +283,21 @@ def test_deletion_when_credentials_in_both_stores(tmp_path):
 
 def test_env_var_precedence_overridden_by_keyring_and_file(tmp_path, monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "env-secret")
+    creds_file = tmp_path / "creds.json"
+    dummy_kr = DummyFailKeyring()
+
+    # 1. Fallback file takes precedence over env var when keyring is unusable
+    store_file = CredentialStore(fallback_path=creds_file, keyring_backend=dummy_kr)
+    store_file.set_secret("gemini_api_key", "file-secret", allow_unencrypted_file=True)
+    assert store_file.get_secret("gemini_api_key") == "file-secret"
+    assert store_file.get_storage_type("gemini_api_key") == "unencrypted_file"
+
+    # 2. Keyring takes precedence over both fallback file and env var
     mock_kr = MockKeyring(priority=5)
     mock_kr.set_password("mossmail", "gemini_api_key", "keyring-secret")
 
-    store = CredentialStore(fallback_path=tmp_path / "creds.json", keyring_backend=mock_kr)
-    # Keyring takes precedence over env var
-    assert store.get_secret("gemini_api_key") == "keyring-secret"
-    assert store.get_storage_type("gemini_api_key") == "keyring"
+    store_keyring = CredentialStore(fallback_path=creds_file, keyring_backend=mock_kr)
+    assert store_keyring.get_secret("gemini_api_key") == "keyring-secret"
+    assert store_keyring.get_storage_type("gemini_api_key") == "keyring"
 
 

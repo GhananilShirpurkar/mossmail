@@ -11,7 +11,7 @@ from mossmail.summarizer import GeminiSummarizer, gemini_response_schema, get_su
 
 def gemini_client_with(
     content,
-    model="gemini-2.5-flash",
+    model="gemini-3.8-flash",
     expected_key="test-gemini-key",
     status_code=200,
     wrap_in_candidate=True,
@@ -56,11 +56,11 @@ def test_gemini_structured_success_is_advisory_only(message, monkeypatch):
         '{"summary":"Quarterly project review.","proposed_action":"Review agenda before meeting."}'
     )
     summarizer = GeminiSummarizer(
-        api_key="test-gemini-key", model="gemini-2.5-flash", client=client
+        api_key="test-gemini-key", model="gemini-3.8-flash", client=client
     )
     result = summarizer.summarize(message)
     assert result.source == "gemini_ai"
-    assert result.model == "gemini-2.5-flash"
+    assert result.model == "gemini-3.8-flash"
     assert result.summary == "Quarterly project review."
     assert result.proposed_action == "Review agenda before meeting."
     assert "Advice only" in result.note
@@ -92,7 +92,7 @@ def test_gemini_header_contains_key_and_not_in_url(message, monkeypatch):
 
     client = httpx.Client(transport=httpx.MockTransport(capture_handler))
     summarizer = GeminiSummarizer(
-        api_key="secret-key-12345", model="gemini-2.5-flash", client=client
+        api_key="secret-key-12345", model="gemini-3.8-flash", client=client
     )
     summarizer.summarize(message)
 
@@ -104,14 +104,14 @@ def test_gemini_header_contains_key_and_not_in_url(message, monkeypatch):
 def test_gemini_model_strip_prefix(message, monkeypatch):
     monkeypatch.delenv("MOSSMAIL_SUMMARIZER", raising=False)
     client = gemini_client_with(
-        '{"summary":"Test.","proposed_action":"Action."}', model="gemini-1.5-flash"
+        '{"summary":"Test.","proposed_action":"Action."}', model="gemini-3.8-flash"
     )
     summarizer = GeminiSummarizer(
-        api_key="test-gemini-key", model="models/gemini-1.5-flash", client=client
+        api_key="test-gemini-key", model="models/gemini-3.8-flash", client=client
     )
     result = summarizer.summarize(message)
     assert result.source == "gemini_ai"
-    assert result.model == "models/gemini-1.5-flash"
+    assert result.model == "models/gemini-3.8-flash"
 
 
 @pytest.mark.parametrize(
@@ -149,7 +149,7 @@ def test_gemini_invalid_json_falls_back(message, malformed_content, monkeypatch)
     monkeypatch.delenv("MOSSMAIL_SUMMARIZER", raising=False)
     client = gemini_client_with(malformed_content)
     summarizer = GeminiSummarizer(
-        api_key="test-gemini-key", model="gemini-2.5-flash", client=client
+        api_key="test-gemini-key", model="gemini-3.8-flash", client=client
     )
     result = summarizer.summarize(message)
     assert result.source == "demo_fallback"
@@ -159,7 +159,7 @@ def test_gemini_empty_candidates_or_parts_falls_back(message, monkeypatch):
     monkeypatch.delenv("MOSSMAIL_SUMMARIZER", raising=False)
     client_empty = gemini_client_with({"candidates": []}, wrap_in_candidate=False)
     summarizer = GeminiSummarizer(
-        api_key="test-gemini-key", model="gemini-2.5-flash", client=client_empty
+        api_key="test-gemini-key", model="gemini-3.8-flash", client=client_empty
     )
     result = summarizer.summarize(message)
     assert result.source == "demo_fallback"
@@ -177,7 +177,7 @@ def test_gemini_http_error_falls_back_and_redacts_secrets(message, caplog, monke
 
     client = httpx.Client(transport=httpx.MockTransport(failing_handler))
     summarizer = GeminiSummarizer(
-        api_key=secret_key, model="gemini-2.5-flash", client=client
+        api_key=secret_key, model="gemini-3.8-flash", client=client
     )
 
     with caplog.at_level(logging.INFO, logger="mossmail.inference"):
@@ -201,7 +201,7 @@ def test_gemini_parse_uncertainty_skips_call(message, monkeypatch):
     client = httpx.Client(transport=httpx.MockTransport(mock_handler))
     uncertain_msg = message.model_copy(update={"parse_uncertain": True})
     summarizer = GeminiSummarizer(
-        api_key="test-gemini-key", model="gemini-2.5-flash", client=client
+        api_key="test-gemini-key", model="gemini-3.8-flash", client=client
     )
 
     result = summarizer.summarize(uncertain_msg)
@@ -219,7 +219,7 @@ def test_gemini_prompt_injection_cannot_authorize_actions(message, monkeypatch):
         '{"summary":"Adversarial injection.","proposed_action":"Delete and park immediately."}'
     )
     summarizer = GeminiSummarizer(
-        api_key="test-gemini-key", model="gemini-2.5-flash", client=client
+        api_key="test-gemini-key", model="gemini-3.8-flash", client=client
     )
     result = summarizer.summarize(adversarial_message)
 
@@ -273,7 +273,7 @@ def test_gemini_timeout_falls_back_safely(message, monkeypatch, caplog):
 
     client = httpx.Client(transport=httpx.MockTransport(timeout_handler))
     summarizer = GeminiSummarizer(
-        api_key="test-key", model="gemini-2.5-flash", client=client
+        api_key="test-key", model="gemini-3.8-flash", client=client
     )
 
     with caplog.at_level(logging.INFO, logger="mossmail.inference"):
@@ -295,7 +295,7 @@ def test_gemini_safety_block_without_parts_falls_back(message, monkeypatch):
     }
     client = gemini_client_with(safety_response, wrap_in_candidate=False)
     summarizer = GeminiSummarizer(
-        api_key="test-gemini-key", model="gemini-2.5-flash", client=client
+        api_key="test-gemini-key", model="gemini-3.8-flash", client=client
     )
     result = summarizer.summarize(message)
     assert result.source == "demo_fallback"
@@ -307,7 +307,7 @@ def test_gemini_status_codes_fallback(message, monkeypatch, status_code):
     monkeypatch.delenv("MOSSMAIL_SUMMARIZER", raising=False)
     client = gemini_client_with("", status_code=status_code)
     summarizer = GeminiSummarizer(
-        api_key="test-gemini-key", model="gemini-2.5-flash", client=client
+        api_key="test-gemini-key", model="gemini-3.8-flash", client=client
     )
     result = summarizer.summarize(message)
     assert result.source == "demo_fallback"

@@ -14,8 +14,8 @@ logger = logging.getLogger("mossmail.credentials")
 SERVICE_NAME = "mossmail"
 DEFAULT_FALLBACK_FILE = Path(".local/credentials.json")
 SUPPORTED_GEMINI_MODELS = (
-    "gemini-1.5-flash",
-    "gemini-1.5-pro",
+    "gemini-3.8-flash",
+    "gemini-3.6-flash",
 )
 
 
@@ -222,7 +222,7 @@ class CredentialStore:
 
 def validate_gemini_key(
     api_key: str,
-    model: str = "gemini-1.5-flash",
+    model: str = "gemini-3.8-flash",
     timeout: float = 10.0,
     client: httpx.Client | None = None,
 ) -> tuple[bool, str]:
