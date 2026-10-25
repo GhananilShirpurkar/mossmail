@@ -1,4 +1,7 @@
 <style>
+/* Keep app navigation, but remove Streamlit's deployment/developer chrome. */
+[data-testid="stToolbar"], [data-testid="stAppDeployButton"],
+[data-testid="stMainMenu"], #MainMenu, footer { display: none !important; }
 :root { --moss:#36573d; --ink:#24372b; --muted:#6c786b; --line:#dce3d5; }
 .stApp { background:#f7f8f2; }
 .block-container { padding:2.1rem 3.2rem 2rem; max-width:1600px; }

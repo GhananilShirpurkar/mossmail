@@ -2,6 +2,7 @@ import html
 import os
 from datetime import datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from uuid import uuid4
 
 import streamlit as st
@@ -12,6 +13,7 @@ from mossmail.storage import Store, load_demo
 from mossmail.summarizer import LocalSummarizer, fallback
 
 ROOT = Path(__file__).parent
+HOSTED_DEMO = globals().get("HOSTED_DEMO", False)
 st.set_page_config(page_title="MossMail · A calmer inbox", page_icon="🌿", layout="wide")
 st.html((ROOT / "mossmail/style.html").read_text())
 
@@ -35,7 +37,13 @@ def event_label(event):
     }[event["kind"]]
 
 
-store = Store(os.getenv("MOSSMAIL_DB", str(ROOT / ".local/mossmail.sqlite3")))
+if HOSTED_DEMO:
+    if "_demo_dir" not in st.session_state:
+        st.session_state["_demo_dir"] = TemporaryDirectory(prefix="mossmail-demo-")
+    db_path = Path(st.session_state["_demo_dir"].name) / "session.sqlite3"
+else:
+    db_path = Path(os.getenv("MOSSMAIL_DB", str(ROOT / ".local/mossmail.sqlite3")))
+store = Store(db_path)
 store.seed(load_demo(ROOT / "data/demo_emails.json"))
 # Idempotent, explicitly simulated seed events. No real mailbox is connected.
 for mid in ("m06", "m07", "m08"):
@@ -60,10 +68,14 @@ with st.sidebar:
         + '<p class="micro">Every message is fictional.<br>No mailbox is connected.</p>'
     )
     st.divider()
-    st.html('<div class="eyebrow">RUNNING LOCALLY</div>')
+    st.html(f'<div class="eyebrow">{"HOSTED DEMO" if HOSTED_DEMO else "RUNNING LOCALLY"}</div>')
     st.caption("Policy · transparent baseline")
     st.caption("Workflow · demo simulation")
-    st.caption("Summaries · Ollama or labeled fallback")
+    st.caption(
+        "Summaries · demo excerpts" if HOSTED_DEMO else "Summaries · Ollama or labeled fallback"
+    )
+    if HOSTED_DEMO:
+        st.caption("Your demo changes are private to this session and reset when it ends.")
     st.html(
         '<div class="sidebar-bottom">Designed for safe inaction.<br>Always yours to decide.</div>'
     )
@@ -72,7 +84,13 @@ rows = store.all()
 counts = {state: sum(r["state"] == state for r in rows) for state in State}
 parked = [r for r in rows if r["parked"]]
 st.html(
-    '<div class="topline"><span>PERSONAL ATTENTION SPACE</span><span>LOCAL FIRST &nbsp; / &nbsp; PRIVACY BY DEFAULT</span></div>'
+    '<div class="topline"><span>PERSONAL ATTENTION SPACE</span><span>'
+    + (
+        "HOSTED DEMO &nbsp; / &nbsp; SYNTHETIC DATA ONLY"
+        if HOSTED_DEMO
+        else "LOCAL FIRST &nbsp; / &nbsp; PRIVACY BY DEFAULT"
+    )
+    + "</span></div>"
 )
 st.html(
     f'<div class="hero"><div class="eyebrow">LESS ATTENTION. BETTER DECISIONS.</div><h1>{"Your inbox, with room to breathe." if view == "Inbox" else "Let it wait. Keep it in sight." if view == "Parked" else "Every decision leaves a trail."}</h1><p>{"Focus on what needs you. Give everything else a little space." if view == "Inbox" else "A pause with a promise to return. Follow-ups bring a message straight back." if view == "Parked" else "Reversible choices, visible reasons, and a history you can inspect."}</p></div>'
@@ -207,8 +225,14 @@ with right:
         key = f"summary_{message.id}_{message.revision}"
         if key not in st.session_state:
             try:
-                with st.spinner("Preparing a local summary…"):
-                    st.session_state[key] = LocalSummarizer().summarize(message)
+                if HOSTED_DEMO:
+                    st.session_state[key] = fallback(
+                        message,
+                        "Hosted demo excerpt. Run MossMail locally to use Ollama and Gemma.",
+                    )
+                else:
+                    with st.spinner("Preparing a local summary…"):
+                        st.session_state[key] = LocalSummarizer().summarize(message)
             except ValueError:
                 st.session_state[key] = fallback(message, "Local model configuration is invalid.")
         summary = st.session_state[key]
@@ -223,7 +247,10 @@ with right:
             st.html('<div class="eyebrow">PROPOSED NEXT STEP · ADVICE ONLY</div>')
             st.text(summary.proposed_action)
             st.caption(summary.note)
-            if st.button("Refresh local summary", key="refresh_" + selected_id):
+            if st.button(
+                "Refresh excerpt" if HOSTED_DEMO else "Refresh local summary",
+                key="refresh_" + selected_id,
+            ):
                 del st.session_state[key]
                 st.rerun()
         st.html('<div class="eyebrow">WHY IT LANDED HERE</div>')
