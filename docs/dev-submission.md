@@ -4,71 +4,81 @@ published: false
 tags: devchallenge, hf26challenge, ai, opensource
 ---
 
-*A submission draft for the [Hacktoberfest Open-Source AI Challenge Week 3: Slow and Steady](https://dev.to/challenges/hacktoberfest-week3-2026-10-19). Built with Codex assistance; source and validation are public. #devchallenge #hf26challenge*
+*This is a submission for the [Hacktoberfest Open-Source AI Challenge Week 3: Slow and Steady](https://dev.to/challenges/hacktoberfest-week3-2026-10-19). Built with Codex assistance. #devchallenge #hf26challenge*
 
 ## What I Built
 
-An inbox is good at telling us that something arrived. It is much less helpful at telling us whether that thing deserves our attention now.
+An inbox tells us that something arrived. It rarely helps us decide whether that message deserves our attention right now.
 
-**MossMail** is a local-first email triage prototype with a simple promise: **a calmer inbox, less attention, better decisions.** It is for people who switch between meaningful work and a growing pile of messages, and want help deciding where to look first.
+I built **MossMail**, a local-first email triage prototype for people whose inbox keeps pulling them away from their work. Its promise is simple: **a calmer inbox, less attention, better decisions.**
 
-Open MossMail and you see a small, considered inbox: messages that need review, threads brought back by a follow-up, and subscriptions parked with a visible review deadline. Select a message to read a short local AI summary, a suggested next step, and the actual policy evidence behind its position.
+MossMail makes waiting an explicit, reversible choice. Protected senders stay visible. Financial, legal, security, urgent, and deadline-sensitive messages go to review. Uncertain content and attachments also need a person. A low-risk subscription can be parked with a visible review deadline, and a follow-up brings its thread back.
 
-The product favors safe inaction. A protected sender stays visible. An invoice, security notice, legal request, or deadline stays visible. An attachment or ambiguous message goes to a person. A low-risk subscription can wait. When its timer expires, it comes back for review; when a follow-up arrives, it escalates. The user can keep a message in review or mark it resolved.
+Select a message to see its short summary or excerpt, suggested next step, and the actual rules behind its recommendation. You can keep it in review or mark it resolved. The product helps you decide where to look; it does not quietly delete mail.
 
-This release is a working synthetic-data demo. It does not connect to a live mailbox, send messages, or delete or archive anything. That makes the behavior inspectable before trusting it with real correspondence.
+The current release uses entirely fictional messages. It demonstrates the decision workflow without connecting to a live mailbox or sending, deleting, or archiving anything.
 
 ## Demo
 
-[Watch the genuine browser recording](https://github.com/GhananilShirpurkar/mossmail/blob/main/docs/mossmail-demo.webm).
+**[Try MossMail live →](https://mossmail.streamlit.app/)**
 
-The recording navigates the running Streamlit application, reads a locally generated Gemma summary, opens a protected financial message, and exercises follow-up escalation and timer expiry in the explicitly labeled dashboard simulation. It is a silent recording of real browser interactions, with entirely fictional messages. There is no deployed mailbox service.
+No mailbox connection or model download is needed. Each visitor gets an isolated demo session. Try this small walkthrough:
 
-![MossMail's real inbox dashboard](https://raw.githubusercontent.com/GhananilShirpurkar/mossmail/main/docs/screenshots/01-inbox.png)
+1. Open the invoice and read the financial and deadline reasons keeping it visible.
+2. Open **Parked**, then choose **Simulate follow-up** on a subscription.
+3. Open **Activity** to inspect the escalation, or try **Preview timer expiry** to return a message for review.
 
-![Visible review and escalation history](https://raw.githubusercontent.com/GhananilShirpurkar/mossmail/main/docs/screenshots/04-history.png)
+![The live MossMail demo on Streamlit Community Cloud](https://raw.githubusercontent.com/GhananilShirpurkar/mossmail/main/docs/screenshots/05-hosted-demo.png)
 
-The durable Temporal implementation is separate from those UI simulation controls and is validated with a real SDK test server. The repository includes exact commands to run the server, worker, timer, and signals yourself.
+The hosted app uses clearly labeled deterministic excerpts and simulated waiting controls. It does not run Gemma or a Temporal server in Community Cloud.
+
+**[Watch the 107-second local Gemma demo](https://github.com/GhananilShirpurkar/mossmail/blob/main/docs/mossmail-demo.webm)** to see actual local AI summaries. This genuine, silent browser recording uses the same fictional collection and explicitly labels its workflow simulation.
+
+The separate durable Temporal implementation is exercised by real SDK integration tests and can be run using the server and worker commands in the README.
 
 ## Code
 
-[MossMail on GitHub](https://github.com/GhananilShirpurkar/mossmail) · [MIT license](https://github.com/GhananilShirpurkar/mossmail/blob/main/LICENSE) · [Validation evidence](https://github.com/GhananilShirpurkar/mossmail/blob/main/docs/validation.md)
+**[MossMail on GitHub](https://github.com/GhananilShirpurkar/mossmail)** · [MIT license](https://github.com/GhananilShirpurkar/mossmail/blob/main/LICENSE) · [Validation](https://github.com/GhananilShirpurkar/mossmail/blob/main/docs/validation.md)
 
-The project has its own source tree and Git history. The README includes setup instructions, architecture, privacy boundaries, screenshots, and a reproducible capture script.
+The repository includes the application, synthetic examples, tests, genuine captures, local setup instructions, and the Community Cloud entrypoint. Its policy and inference code are separate from the Streamlit interface, so the important behavior can be tested directly.
 
 ## How I Built It
 
 I used Python, Streamlit, Pydantic, SQLite, Ollama, and the Temporal Python SDK. Codex assisted with implementation, tests, documentation, and browser verification.
 
-The inspiration was Khushighosh's [Let It Die](https://github.com/Khushighosh/let-it-die) and its [DEV article](https://dev.to/khushighosh/let-it-die-the-lazy-email-agent-on-tabpfn-gemma-and-temporal-10o0). I inspected the MIT-licensed repository before building. Its combination of local summaries and deferred-message workflows was a useful starting idea.
+The inspiration was Khushighosh's [Let It Die repository](https://github.com/Khushighosh/let-it-die) and its [DEV article](https://dev.to/khushighosh/let-it-die-the-lazy-email-agent-on-tabpfn-gemma-and-temporal-10o0). I inspected the MIT-licensed repository before building. Local summaries and deferred-message workflows were the conceptual starting point.
 
-MossMail independently implements a different decision policy and product experience. It does not use a predicted lack of reply as proof that a message is unimportant. It adds explicit protection rules, uncertainty handling, a review-first dashboard, structured summaries, recursive MIME preparation, and a transactional event ledger. No upstream code, dataset, predictions, caches, or history was copied.
+MossMail independently implements a risk-first policy, review interface, structured summary boundary, MIME preparation, and transactional event ledger. No upstream source, dataset, predictions, caches, credentials, or Git history was copied. It also avoids treating a predicted lack of reply as proof that an email is unimportant.
 
-Gemma supplies the reading assistance. The configured default is `gemma3:4b`; the actual demonstration used the installed `gemma2:2b` through local Ollama. Each response must match a two-field schema. If the service is unavailable, the model is missing, parsing is uncertain, or the response is invalid, the UI honestly labels a deterministic excerpt. The language model offers advice and has no authority to change policy or execute actions.
+**Gemma helps with reading.** The default model is configurable `gemma3:4b`; the actual local demonstration used the installed `gemma2:2b` through Ollama. Responses must match a JSON schema. Missing models, connection failures, uncertain parsing, and invalid output produce an honestly labeled excerpt. Email text is untrusted data, and the summarizer has no mailbox tools or policy authority.
 
-Temporal supplies the durable waiting mechanism. A workflow records parking through an activity, waits for a signal or timer, then performs a safe local transition. Retried activities return the same ledger result instead of duplicating a write. Tests exercise expiry, follow-ups, new risk, user resolution, failure after commit, worker restart, and replay.
+**Temporal makes waiting durable.** A workflow records parking through an activity, waits for a timer or signal, and applies a safe local transition. Expiry returns a message for review. Activity retries are deduplicated, stale parking cycles cannot overwrite newer ones, and signals arriving during an in-flight expiry activity are processed before completion. Integration tests cover timers, signals, retry after commit, worker replacement, replay, and that signal race.
 
-A transparent local scorer makes the app useful immediately. There is also an optional hosted TabPFN adapter with explicit consent and numeric-only features. Hosted inference was not run for this submission; no predictive metrics or TabPFN prize claim are made.
+**The cloud demo stays lightweight.** A separate entrypoint isolates each visitor's synthetic state in a temporary database and bypasses Ollama. The local application retains its Gemma integration and persistent local state.
+
+An optional hosted TabPFN adapter is implemented with explicit consent and numeric-only features. Hosted inference was not run for this submission, and no model-quality metric or TabPFN prize claim is made.
 
 ## Why Does Open Innovation Matter?
 
-The local model is what lets the reading experience run without sending message text to a hosted language-model provider. The model can be changed through configuration, and failure does not make the product unusable. Gemma's weights are not bundled; its own terms apply.
+Running Gemma locally lets the reading assistance work without sending message text to a hosted language-model provider. The model can be swapped through configuration, while the application remains usable if inference fails. Model weights are not bundled, and Gemma's own terms apply.
 
-Temporal's open-source workflow tools make waiting something I can inspect and test, including the difficult case where a write succeeds but its activity response fails. The policy is ordinary readable Python, so someone can change who is protected or how long a message may wait without relying on a hidden service policy.
+Temporal's open-source workflow tools make the waiting behavior inspectable and testable. I can reproduce a failure after a committed write, restart a worker, replay history, and check whether a follow-up still reaches the review queue.
 
-The open contribution here is the whole decision boundary: code, examples, reasons, tests, and limitations. Other builders can improve the MIME handling, evaluate risk on permissioned data, or add read-only integrations while keeping the safety rules visible.
+The policy is readable Python. Someone can change protected senders, shorten the waiting period, or improve MIME handling while keeping those decisions visible. The useful open contribution is that whole boundary: code, examples, explanations, tests, and limitations.
 
 ## My Agent Session
 
-This project was built with Codex assistance. The implementation and validation steps are documented in the repository. No public agent-session transcript is attached; sharing one is optional, and I have not uploaded this conversation or private environment details.
+This project was built with Codex assistance. The implementation, validation notes, and commit history document the work. A public agent-session transcript is not included.
 
 ## The Lazy Payoff
 
-The intended payoff is fewer repeated decisions about low-risk mail: park it with a deadline, then look again when there is a reason. The demo shows that behavior, but it is not a user study. I have not measured real-world minutes saved, reduction in inbox checking, or risk-detection accuracy. Those measurements remain future work.
+The intended payoff is fewer repeated decisions about low-risk messages: give them a deadline, let them wait, and return when there is new context or a reason to review.
+
+The demo shows that behavior. Real-world time saved, changes in inbox-checking habits, and risk-detection accuracy have not been measured; those remain future evaluation work.
 
 ## Prize Categories
 
-- **Best Use of Gemma** — actual local `gemma2:2b` inference in the running application; the recorded UI identifies the model and distinguishes it from fallback excerpts.
-- **Best Use of Temporal** — an implemented durable workflow with activities, timers, signals, retries, and real SDK integration tests for worker recovery and replay. The UI recording clearly labels its separate simulation.
+- **Best Use of Gemma** — actual local `gemma2:2b` inference through Ollama, demonstrated in the recorded application with model and source labels.
+- **Best Use of Temporal** — a durable workflow with activities, timers, signals, bounded retries, idempotent local effects, worker-recovery tests, and history replay.
 
-No other partner category is claimed.
+The live Streamlit demo is a convenient way to explore the product. The local recording and integration tests provide the evidence for these two partner integrations. No other partner category is claimed.

@@ -6,9 +6,11 @@ MossMail is a local-first email triage prototype for people whose inbox competes
 
 **Safe inaction is the product.** Protected and uncertain messages stay visible. Low-risk subscriptions can wait with a review deadline. A follow-up brings a thread back. Nothing is sent, deleted, or archived.
 
-[Watch the genuine browser demo](docs/mossmail-demo.webm) · [Submission draft](docs/dev-submission.md) · [Architecture](docs/architecture.md) · [Validation](docs/validation.md)
+[Try the live demo](https://mossmail.streamlit.app/) · [Watch the local Gemma demo](docs/mossmail-demo.webm) · [Submission draft](docs/dev-submission.md) · [Architecture](docs/architecture.md) · [Validation](docs/validation.md)
 
-![MossMail inbox with attention counts and a locally generated Gemma summary](docs/screenshots/01-inbox.png)
+![MossMail hosted demo with synthetic messages and a clean application toolbar](docs/screenshots/05-hosted-demo.png)
+
+**Live on [Streamlit Community Cloud](https://mossmail.streamlit.app/).** The hosted demo uses synthetic messages, isolated visitor sessions, labeled excerpts, and simulated workflow controls. Run locally for Ollama/Gemma inference and use the separate Temporal worker for durable waiting. [Cloud deployment details](docs/streamlit-deployment.md).
 
 ## Try it locally
 
@@ -175,7 +177,7 @@ If that model is absent, the capture truthfully shows the fallback. The script n
 
 ## Privacy, limitations, and roadmap
 
-There is **no Gmail/Outlook connection, live synchronization, mail sending, deletion, or archival**. The app binds to loopback and has no multi-user authentication. Do not expose it publicly as a mailbox service. Data and event history are local; SQLite is not encrypted. The supplied collection and captures are entirely synthetic.
+There is **no Gmail/Outlook connection, live synchronization, mail sending, deletion, or archival**. The local app binds to loopback and has no multi-user authentication. The hosted `streamlit_app.py` demo uses only bundled synthetic data and a separate temporary database for each visitor session. Session changes are disposable; the hosted demo is not a mailbox service. Local SQLite is not encrypted. The supplied collection and captures are entirely synthetic.
 
 Streamlit usage statistics are disabled. No Sentry or third-party message telemetry is initialized. Inference failures log only a fixed event code, not exception bodies, prompts, email content, or addresses. Original MIME bytes are retained by the parser result, not automatically logged or uploaded. Using a hosted scorer is a separate explicit opt-in.
 

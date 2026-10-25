@@ -50,6 +50,13 @@ The installed application was additionally checked in Chromium at 1440 × 1100 a
 
 - Hosted TabPFN inference and its quality: no hosted account was used or mailbox feature data transmitted.
 - `gemma3:4b` inference: default configuration provided, model not installed on this machine.
-- Real mailbox synchronization, OAuth, write access, attachments, production authentication, and deployment: not implemented.
+- Real mailbox synchronization, OAuth, write access, attachments, production authentication, and production mailbox deployment: not implemented.
 - Real-user feedback, time savings, training metrics, and generalization: not measured.
-- DEV publication: a local draft only. Eligibility and publishing remain with the author.
+- DEV publication: a prepared article in the repository only. Eligibility and publishing remain with the author.
+
+
+## Community Cloud release
+
+The hosted release is available at [mossmail.streamlit.app](https://mossmail.streamlit.app/). A real browser verified the deployed inbox, synthetic collection, session-isolation notice, labeled fallback excerpts, and absence of the developer toolbar. `docs/screenshots/05-hosted-demo.png` is a genuine capture of that deployment.
+
+The cloud entrypoint adds a regression test proving that two independent sessions use different databases, that one visitor's resolution does not change the other visitor's state, and that the hosted demo never invokes Ollama. Both published GitHub Actions jobs passed for commit `879f1e9`: 60 offline tests and seven real Temporal cases passed (67 tests across the two jobs); the original 66-test result above records the initial local release. The hosted demo is not evidence of cloud Gemma inference or a live Temporal server.
