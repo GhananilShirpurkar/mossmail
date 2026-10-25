@@ -3,6 +3,7 @@ import logging
 import os
 import re
 from abc import ABC, abstractmethod
+from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
@@ -240,12 +241,20 @@ def get_summarizer(
     host: str | None = None,
     timeout: float | None = None,
     client: httpx.Client | None = None,
+    credential_store: Any | None = None,
 ) -> LLMProvider:
+    from .credentials import CredentialStore
+
+    creds = credential_store or CredentialStore()
+    resolved_key = api_key if api_key is not None else creds.get_secret("gemini_api_key")
+    resolved_model = model if model is not None else creds.get_secret("gemini_model")
     provider_type = (
         provider
         or os.getenv("MOSSMAIL_PROVIDER")
-        or ("gemini" if (api_key or os.getenv("GEMINI_API_KEY")) else "local")
+        or ("gemini" if (resolved_key or os.getenv("GEMINI_API_KEY")) else "local")
     )
     if provider_type == "gemini":
-        return GeminiSummarizer(api_key=api_key, model=model, timeout=timeout, client=client)
+        return GeminiSummarizer(
+            api_key=resolved_key, model=resolved_model, timeout=timeout, client=client
+        )
     return LocalSummarizer(host=host, model=model, timeout=timeout, client=client)

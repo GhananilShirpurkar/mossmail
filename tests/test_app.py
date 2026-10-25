@@ -41,3 +41,17 @@ def test_hosted_sessions_are_isolated_and_never_call_ollama(tmp_path, monkeypatc
     assert Store(second_path).get("m01")["state"] == State.REVIEW
     assert not shared.exists()
     assert any("Hosted demo excerpt" in caption.value for caption in second.caption)
+
+
+def test_settings_workspace_navigation_and_rendering(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSSMAIL_DB", str(tmp_path / "ui.db"))
+    monkeypatch.setenv("MOSSMAIL_CREDS_FILE", str(tmp_path / "creds.json"))
+    entrypoint = str(Path(__file__).parents[1] / "app.py")
+    app = AppTest.from_file(entrypoint, default_timeout=20).run()
+    assert not app.exception
+
+    # Navigate to Settings
+    app.sidebar.radio[0].set_value("Settings").run()
+    assert not app.exception
+    assert any("Settings & AI Configuration" in sub.value for sub in app.subheader)
+    assert any("PRIVACY & DATA BOUNDARY" in h.value for h in app.html)

@@ -7,10 +7,16 @@ from uuid import uuid4
 
 import streamlit as st
 
+from mossmail.credentials import (
+    SUPPORTED_GEMINI_MODELS,
+    CredentialStore,
+    InsecureStorageError,
+    validate_gemini_key,
+)
 from mossmail.decision_engine import decide
 from mossmail.models import Message, Override, State
 from mossmail.storage import Store, load_demo
-from mossmail.summarizer import LocalSummarizer, fallback
+from mossmail.summarizer import fallback, get_summarizer
 
 ROOT = Path(__file__).parent
 HOSTED_DEMO = globals().get("HOSTED_DEMO", False)
@@ -59,7 +65,9 @@ with st.sidebar:
         '<div class="brand"><span class="brand-icon">m</span> mossmail<span class="brand-dot">BETA</span></div>'
     )
     st.html('<div class="sidebar-note">A little less noise.<br>A little more room to think.</div>')
-    view = st.radio("Workspace", ["Inbox", "Parked", "Activity"], label_visibility="collapsed")
+    view = st.radio(
+        "Workspace", ["Inbox", "Parked", "Activity", "Settings"], label_visibility="collapsed"
+    )
     st.divider()
     st.html('<div class="eyebrow">YOUR WORKSPACE</div>')
     st.caption("Cedar Studio · synthetic collection")
@@ -92,8 +100,26 @@ st.html(
     )
     + "</span></div>"
 )
+hero_h1 = (
+    "Your inbox, with room to breathe."
+    if view == "Inbox"
+    else "Let it wait. Keep it in sight."
+    if view == "Parked"
+    else "Every decision leaves a trail."
+    if view == "Activity"
+    else "Your tools, your keys, your terms."
+)
+hero_p = (
+    "Focus on what needs you. Give everything else a little space."
+    if view == "Inbox"
+    else "A pause with a promise to return. Follow-ups bring a message straight back."
+    if view == "Parked"
+    else "Reversible choices, visible reasons, and a history you can inspect."
+    if view == "Activity"
+    else "Configure local and cloud AI providers with strict privacy boundaries."
+)
 st.html(
-    f'<div class="hero"><div class="eyebrow">LESS ATTENTION. BETTER DECISIONS.</div><h1>{"Your inbox, with room to breathe." if view == "Inbox" else "Let it wait. Keep it in sight." if view == "Parked" else "Every decision leaves a trail."}</h1><p>{"Focus on what needs you. Give everything else a little space." if view == "Inbox" else "A pause with a promise to return. Follow-ups bring a message straight back." if view == "Parked" else "Reversible choices, visible reasons, and a history you can inspect."}</p></div>'
+    f'<div class="hero"><div class="eyebrow">LESS ATTENTION. BETTER DECISIONS.</div><h1>{hero_h1}</h1><p>{hero_p}</p></div>'
 )
 
 metrics = [
@@ -136,6 +162,132 @@ if view == "Activity":
         st.info(
             "This dashboard simulates waiting. Run the separate Temporal worker for durable workflows; see the README."
         )
+    st.stop()
+
+if view == "Settings":
+    st.subheader("Settings & AI Configuration")
+    st.caption("Manage AI inference providers and credentials. Keys never leave your machine.")
+    cred_store = CredentialStore()
+    left, right = st.columns([1.4, 1], gap="large")
+    with left:
+        st.html('<div class="eyebrow">INFERENCE PROVIDER</div>')
+        has_key = cred_store.get_secret("gemini_api_key") is not None
+        provider_choice = st.radio(
+            "Select Provider",
+            ["Google Gemini API (BYOK)", "Local Ollama (100% Offline)"],
+            index=0 if has_key else 1,
+            label_visibility="collapsed",
+        )
+        if provider_choice == "Local Ollama (100% Offline)":
+            st.info(
+                "Local Ollama inference connects strictly to loopback HTTP (127.0.0.1:11434). "
+                "No email data is ever sent to external cloud servers."
+            )
+            st.caption(f"Default local model: {os.getenv('OLLAMA_MODEL', 'gemma3:4b')}")
+        else:
+            st.markdown("### Google Gemini Configuration")
+            key_status = cred_store.get_storage_type("gemini_api_key")
+            current_model = cred_store.get_secret("gemini_model") or SUPPORTED_GEMINI_MODELS[0]
+
+            if has_key:
+                storage_desc = (
+                    "Secure OS Keyring"
+                    if key_status == "keyring"
+                    else "Local file (.local/credentials.json, mode 0600)"
+                    if key_status == "unencrypted_file"
+                    else "Environment Variable"
+                )
+                st.success(
+                    f"Gemini API key is configured ({storage_desc}). Value is protected and never displayed."
+                )
+                model_idx = (
+                    SUPPORTED_GEMINI_MODELS.index(current_model)
+                    if current_model in SUPPORTED_GEMINI_MODELS
+                    else 0
+                )
+                chosen_model = st.selectbox(
+                    "Active Gemini Model", SUPPORTED_GEMINI_MODELS, index=model_idx
+                )
+                if chosen_model != current_model:
+                    if st.button("Update Model", type="primary"):
+                        cred_store.set_secret(
+                            "gemini_model", chosen_model, allow_unencrypted_file=True
+                        )
+                        st.rerun()
+
+                if st.button("Remove Gemini API Key", type="secondary"):
+                    cred_store.delete_secret("gemini_api_key")
+                    cred_store.delete_secret("gemini_model")
+                    st.rerun()
+            else:
+                st.caption(
+                    "Bring your own API key from Google AI Studio. The key is stored locally "
+                    "and used only when you choose to summarize an email."
+                )
+                key_input = st.text_input(
+                    "Gemini API Key",
+                    type="password",
+                    placeholder="AIzaSy...",
+                    help="Stored securely in your operating system credential vault.",
+                )
+                chosen_model = st.selectbox(
+                    "Select Model", SUPPORTED_GEMINI_MODELS, index=0
+                )
+
+                keyring_usable = cred_store.is_keyring_usable()
+                consent = False
+                if not keyring_usable:
+                    st.warning(
+                        "⚠️ No secure OS keyring is available on this system. Saving this key requires writing to an unencrypted "
+                        "local file (`.local/credentials.json` with permissions `0600`). Note: filesystem permissions restrict "
+                        "access to your user account, but do NOT provide encryption at rest."
+                    )
+                    consent = st.checkbox(
+                        "I understand and authorize storing credentials in an unencrypted file with 0600 permissions",
+                        key="consent_unencrypted_file",
+                    )
+
+                if st.button("Test & Save Key", type="primary"):
+                    if not key_input.strip():
+                        st.error("Please enter a valid API key.")
+                    else:
+                        with st.spinner("Validating API key with Google Gemini API..."):
+                            ok, msg = validate_gemini_key(key_input, model=chosen_model)
+                        if not ok:
+                            st.error(msg)
+                        else:
+                            try:
+                                cred_store.set_secret(
+                                    "gemini_api_key",
+                                    key_input,
+                                    allow_unencrypted_file=consent,
+                                )
+                                cred_store.set_secret(
+                                    "gemini_model",
+                                    chosen_model,
+                                    allow_unencrypted_file=consent,
+                                )
+                                st.success("Key validated and stored successfully!")
+                                st.rerun()
+                            except InsecureStorageError as exc:
+                                st.error(str(exc))
+
+    with right:
+        with st.container(border=True):
+            st.html(
+                '<div class="principle"><div class="eyebrow">PRIVACY & DATA BOUNDARY</div>'
+                '<h2>What leaves your machine?</h2>'
+                '<p>Safe inaction means your privacy is explicit, never assumed.</p></div>'
+            )
+            st.markdown(
+                """
+                - **When does data leave?** Only when you open an email and active provider is set to Gemini.
+                - **What is sent?** Subject (truncated to 300 chars) and latest reply body (truncated to 6,000 chars).
+                - **What is NOT sent?** Email headers, DKIM/auth tokens, attachments, IP addresses, and recipient lists are strictly excluded.
+                - **Offline option:** Select Local Ollama for complete air-gapped processing on your own hardware.
+                - **Google Terms:** Free-tier keys are governed by Google AI Studio Terms. Paid tier keys provide zero-data-retention.
+                """
+            )
     st.stop()
 
 left, right = st.columns([1.1, 1], gap="large")
@@ -231,15 +383,17 @@ with right:
                         "Hosted demo excerpt. Run MossMail locally to use Ollama and Gemma.",
                     )
                 else:
-                    with st.spinner("Preparing a local summary…"):
-                        st.session_state[key] = LocalSummarizer().summarize(message)
+                    with st.spinner("Preparing summary…"):
+                        st.session_state[key] = get_summarizer().summarize(message)
             except ValueError:
-                st.session_state[key] = fallback(message, "Local model configuration is invalid.")
+                st.session_state[key] = fallback(message, "Model configuration is invalid.")
         summary = st.session_state[key]
         with st.container(border=True):
             source = (
                 f"LOCAL AI · {summary.model}"
                 if summary.source == "local_ai"
+                else f"GEMINI AI · {summary.model}"
+                if summary.source == "gemini_ai"
                 else "DEMO FALLBACK · EXCERPT"
             )
             st.html('<div class="eyebrow">THE SHORT VERSION</div>' + badge(source))
@@ -248,7 +402,7 @@ with right:
             st.text(summary.proposed_action)
             st.caption(summary.note)
             if st.button(
-                "Refresh excerpt" if HOSTED_DEMO else "Refresh local summary",
+                "Refresh excerpt" if HOSTED_DEMO else "Refresh summary",
                 key="refresh_" + selected_id,
             ):
                 del st.session_state[key]
