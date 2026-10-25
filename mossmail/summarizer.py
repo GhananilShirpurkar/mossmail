@@ -111,6 +111,29 @@ class LocalSummarizer(LLMProvider):
             )
 
 
+def gemini_response_schema() -> dict:
+    """OpenAPI 3.0 Schema matching Google Gemini REST API Schema proto.
+
+    Google's Schema proto rejects unsupported JSON Schema keywords (such as
+    'additionalProperties', 'title', '$defs', 'minLength', and 'maxLength') and
+    requires standard uppercase type identifiers.
+    """
+    return {
+        "type": "OBJECT",
+        "properties": {
+            "summary": {
+                "type": "STRING",
+                "description": "Short summary of the latest sender reply, at most two sentences.",
+            },
+            "proposed_action": {
+                "type": "STRING",
+                "description": "Proposed next step or advice for human review.",
+            },
+        },
+        "required": ["summary", "proposed_action"],
+    }
+
+
 class GeminiSummarizer(LLMProvider):
     def __init__(
         self,
@@ -162,7 +185,7 @@ class GeminiSummarizer(LLMProvider):
                 "temperature": 0.0,
                 "maxOutputTokens": 300,
                 "responseMimeType": "application/json",
-                "responseSchema": SummaryPayload.model_json_schema(),
+                "responseSchema": gemini_response_schema(),
             },
         }
         # Send API key via header 'x-goog-api-key' to avoid leaking secret in URL query parameters.

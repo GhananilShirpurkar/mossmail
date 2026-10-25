@@ -6,7 +6,7 @@ import pytest
 
 from mossmail.decision_engine import decide
 from mossmail.models import State
-from mossmail.summarizer import GeminiSummarizer, get_summarizer
+from mossmail.summarizer import GeminiSummarizer, gemini_response_schema, get_summarizer
 
 
 def gemini_client_with(
@@ -27,7 +27,7 @@ def gemini_client_with(
 
         payload = json.loads(request.content)
         assert payload["generationConfig"]["responseMimeType"] == "application/json"
-        assert payload["generationConfig"]["responseSchema"]["type"] == "object"
+        assert payload["generationConfig"]["responseSchema"]["type"] == "OBJECT"
         assert "summary" in payload["generationConfig"]["responseSchema"]["required"]
 
         if wrap_in_candidate:
@@ -248,3 +248,67 @@ def test_get_summarizer_factory(monkeypatch):
     s3 = get_summarizer()
     assert s3.__class__.__name__ == "GeminiSummarizer"
     assert s3.api_key == "env-key"
+
+
+def test_gemini_response_schema_compatibility():
+    schema = gemini_response_schema()
+    assert schema["type"] == "OBJECT"
+    assert set(schema["required"]) == {"summary", "proposed_action"}
+    # Verify rejection of unsupported JSON Schema keywords rejected by Gemini proto
+    assert "additionalProperties" not in schema
+    assert "title" not in schema
+    assert "$defs" not in schema
+    for prop in schema["properties"].values():
+        assert prop["type"] == "STRING"
+        assert "description" in prop
+        assert "minLength" not in prop
+        assert "maxLength" not in prop
+
+
+def test_gemini_timeout_falls_back_safely(message, monkeypatch, caplog):
+    monkeypatch.delenv("MOSSMAIL_SUMMARIZER", raising=False)
+
+    def timeout_handler(request: httpx.Request):
+        raise httpx.ReadTimeout("Read timed out after 30s", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(timeout_handler))
+    summarizer = GeminiSummarizer(
+        api_key="test-key", model="gemini-2.5-flash", client=client
+    )
+
+    with caplog.at_level(logging.INFO, logger="mossmail.inference"):
+        result = summarizer.summarize(message)
+
+    assert result.source == "demo_fallback"
+    assert "gemini_summary_unavailable" in caplog.text
+
+
+def test_gemini_safety_block_without_parts_falls_back(message, monkeypatch):
+    monkeypatch.delenv("MOSSMAIL_SUMMARIZER", raising=False)
+    safety_response = {
+        "candidates": [
+            {
+                "finishReason": "SAFETY",
+                "index": 0,
+            }
+        ]
+    }
+    client = gemini_client_with(safety_response, wrap_in_candidate=False)
+    summarizer = GeminiSummarizer(
+        api_key="test-gemini-key", model="gemini-2.5-flash", client=client
+    )
+    result = summarizer.summarize(message)
+    assert result.source == "demo_fallback"
+    assert "no text parts" in result.note
+
+
+@pytest.mark.parametrize("status_code", [400, 401, 403, 429, 500])
+def test_gemini_status_codes_fallback(message, monkeypatch, status_code):
+    monkeypatch.delenv("MOSSMAIL_SUMMARIZER", raising=False)
+    client = gemini_client_with("", status_code=status_code)
+    summarizer = GeminiSummarizer(
+        api_key="test-gemini-key", model="gemini-2.5-flash", client=client
+    )
+    result = summarizer.summarize(message)
+    assert result.source == "demo_fallback"
+
