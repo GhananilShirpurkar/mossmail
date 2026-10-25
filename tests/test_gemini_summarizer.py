@@ -104,14 +104,14 @@ def test_gemini_header_contains_key_and_not_in_url(message, monkeypatch):
 def test_gemini_model_strip_prefix(message, monkeypatch):
     monkeypatch.delenv("MOSSMAIL_SUMMARIZER", raising=False)
     client = gemini_client_with(
-        '{"summary":"Test.","proposed_action":"Action."}', model="gemini-2.0-flash"
+        '{"summary":"Test.","proposed_action":"Action."}', model="gemini-1.5-flash"
     )
     summarizer = GeminiSummarizer(
-        api_key="test-gemini-key", model="models/gemini-2.0-flash", client=client
+        api_key="test-gemini-key", model="models/gemini-1.5-flash", client=client
     )
     result = summarizer.summarize(message)
     assert result.source == "gemini_ai"
-    assert result.model == "models/gemini-2.0-flash"
+    assert result.model == "models/gemini-1.5-flash"
 
 
 @pytest.mark.parametrize(

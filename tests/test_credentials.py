@@ -185,3 +185,40 @@ def test_validate_gemini_key_network_error(caplog):
     assert ok is False
     assert "network error" in msg.casefold()
     assert "my-secret-key-456" not in caplog.text
+
+
+def test_prune_unencrypted_fallback_when_saving_to_keyring(tmp_path):
+    creds_file = tmp_path / "creds.json"
+    dummy_kr = DummyFailKeyring()
+    # 1. Initially saved to unencrypted fallback file
+    store_file = CredentialStore(fallback_path=creds_file, keyring_backend=dummy_kr)
+    store_file.set_secret("gemini_api_key", "old-secret", allow_unencrypted_file=True)
+    assert creds_file.exists()
+
+    # 2. Later, working keyring becomes available
+    working_kr = MockKeyring(priority=5)
+    store_keyring = CredentialStore(fallback_path=creds_file, keyring_backend=working_kr)
+    medium = store_keyring.set_secret("gemini_api_key", "new-secret")
+
+    assert medium == "keyring"
+    assert store_keyring.get_secret("gemini_api_key") == "new-secret"
+    # Unencrypted copy must be pruned from disk
+    assert not creds_file.exists()
+
+
+def test_broken_keyring_fails_safe(tmp_path):
+    class BrokenKeyring:
+        @property
+        def priority(self):
+            raise RuntimeError("D-Bus initialization error")
+
+    store = CredentialStore(fallback_path=tmp_path / "creds.json", keyring_backend=BrokenKeyring())
+    assert store.is_keyring_usable() is False
+
+
+def test_validate_gemini_key_rejects_deprecated_models():
+    # gemini-2.0-flash is shut down / deprecated
+    ok, msg = validate_gemini_key("key", model="gemini-2.0-flash")
+    assert ok is False
+    assert "not in supported models" in msg
+

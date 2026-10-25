@@ -15,7 +15,6 @@ SERVICE_NAME = "mossmail"
 DEFAULT_FALLBACK_FILE = Path(".local/credentials.json")
 SUPPORTED_GEMINI_MODELS = (
     "gemini-2.5-flash",
-    "gemini-2.0-flash",
     "gemini-1.5-flash",
     "gemini-1.5-pro",
 )
@@ -42,12 +41,15 @@ class CredentialStore:
 
     def is_keyring_usable(self) -> bool:
         """Check if a secure OS keyring backend is available and has non-zero priority."""
-        kr = self.keyring
-        name = kr.__class__.__name__
-        if "fail" in name.lower() or "null" in name.lower():
+        try:
+            kr = self.keyring
+            name = kr.__class__.__name__
+            if "fail" in name.lower() or "null" in name.lower():
+                return False
+            priority = getattr(kr, "priority", 0)
+            return priority > 0
+        except Exception:
             return False
-        priority = getattr(kr, "priority", 0)
-        return priority > 0
 
     def get_secret(self, key_name: str) -> str | None:
         """Retrieve a secret, checking keyring first, then consented fallback file, then env."""
@@ -99,6 +101,7 @@ class CredentialStore:
         if self.is_keyring_usable():
             try:
                 self.keyring.set_password(SERVICE_NAME, key_name, secret_clean)
+                self._prune_fallback_key(key_name)
                 return "keyring"
             except KeyringError:
                 logger.info("keyring_write_failed")
@@ -183,11 +186,23 @@ class CredentialStore:
         data[key_name] = value
         self._save_raw_fallback(data)
 
+    def _prune_fallback_key(self, key_name: str) -> None:
+        if self.fallback_path.exists():
+            data = self._read_fallback_file()
+            if key_name in data:
+                del data[key_name]
+                remaining_secrets = {k: v for k, v in data.items() if not k.startswith("_")}
+                if remaining_secrets:
+                    self._save_raw_fallback(data)
+                else:
+                    self._unlink_fallback()
+
     def _save_raw_fallback(self, data: dict[str, Any]) -> None:
         content = json.dumps(data, indent=2)
+        # Write to temporary file in the same directory, fsync, and atomically replace
+        temp_path = self.fallback_path.with_name(f"{self.fallback_path.name}.tmp.{os.getpid()}")
         flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-        # Create with mode 0600 (read/write by owner only)
-        fd = os.open(self.fallback_path, flags, 0o600)
+        fd = os.open(temp_path, flags, 0o600)
         try:
             with open(fd, "w", encoding="utf-8", closefd=False) as f:
                 f.write(content)
@@ -195,8 +210,8 @@ class CredentialStore:
                 os.fsync(fd)
         finally:
             os.close(fd)
-        # Ensure explicit chmod in case umask modified created mode
-        os.chmod(self.fallback_path, stat.S_IRUSR | stat.S_IWUSR)
+        os.chmod(temp_path, stat.S_IRUSR | stat.S_IWUSR)
+        os.replace(temp_path, self.fallback_path)
 
     def _unlink_fallback(self) -> None:
         try:
