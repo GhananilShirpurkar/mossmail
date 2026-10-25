@@ -61,6 +61,6 @@ class SummaryPayload(BaseModel):
 
 
 class Summary(SummaryPayload):
-    source: Literal["local_ai", "demo_fallback"]
+    source: Literal["local_ai", "gemini_ai", "demo_fallback"]
     model: str | None = None
     note: str

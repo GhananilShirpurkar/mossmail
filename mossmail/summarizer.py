@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import re
+from abc import ABC, abstractmethod
 from urllib.parse import urlsplit
 
 import httpx
@@ -32,7 +34,13 @@ def fallback(message: Message, note: str) -> Summary:
     )
 
 
-class LocalSummarizer:
+class LLMProvider(ABC):
+    @abstractmethod
+    def summarize(self, message: Message) -> Summary:
+        """Produce an advisory summary adhering strictly to SummaryPayload schema or fallback."""
+
+
+class LocalSummarizer(LLMProvider):
     def __init__(self, host=None, model=None, timeout=None, client=None):
         self.host = host or os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
         self.model = model or os.getenv("OLLAMA_MODEL", "gemma3:4b")
@@ -101,3 +109,120 @@ class LocalSummarizer:
             return fallback(
                 message, "Local inference unavailable or invalid; deterministic excerpt."
             )
+
+
+class GeminiSummarizer(LLMProvider):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str | None = None,
+        timeout: float | None = None,
+        client: httpx.Client | None = None,
+    ):
+        raw_key = api_key if api_key is not None else os.getenv("GEMINI_API_KEY", "")
+        self.api_key = raw_key.strip()
+        self.model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        self.timeout = timeout or float(os.getenv("GEMINI_TIMEOUT", "30"))
+        self.client = client
+        clean_model = self.model[7:] if self.model.startswith("models/") else self.model
+        if not re.match(r"^[a-zA-Z0-9_\-\.]+$", clean_model):
+            raise ValueError("Invalid model identifier")
+        self._endpoint_model = clean_model
+
+    def summarize(self, message: Message) -> Summary:
+        if os.getenv("MOSSMAIL_SUMMARIZER", "auto") == "fallback":
+            return fallback(message, "Deterministic demo excerpt; AI inference is disabled.")
+        if not self.api_key:
+            return fallback(message, "Gemini API key is not configured; deterministic excerpt.")
+        latest, ambiguous = latest_reply(message.body)
+        if message.parse_uncertain or ambiguous or not latest:
+            return fallback(message, "Parsing is uncertain; inspect the original before acting.")
+
+        endpoint = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/{self._endpoint_model}:generateContent"
+        )
+        payload = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "text": json.dumps(
+                                {
+                                    "subject": message.subject[:300],
+                                    "latest_reply": latest[:6000],
+                                }
+                            )
+                        }
+                    ],
+                }
+            ],
+            "systemInstruction": {"parts": [{"text": SYSTEM}]},
+            "generationConfig": {
+                "temperature": 0.0,
+                "maxOutputTokens": 300,
+                "responseMimeType": "application/json",
+                "responseSchema": SummaryPayload.model_json_schema(),
+            },
+        }
+        # Send API key via header 'x-goog-api-key' to avoid leaking secret in URL query parameters.
+        headers = {
+            "x-goog-api-key": self.api_key,
+            "Content-Type": "application/json",
+        }
+        try:
+            with httpx.Client(timeout=self.timeout, trust_env=False, follow_redirects=False) as own:
+                client = self.client or own
+                response = client.post(endpoint, json=payload, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+                candidates = data.get("candidates", [])
+                if not candidates:
+                    return fallback(
+                        message, "Gemini produced no candidates; deterministic excerpt."
+                    )
+                content = candidates[0].get("content", {})
+                parts = content.get("parts", [])
+                if not parts:
+                    return fallback(
+                        message, "Gemini response contained no text parts; deterministic excerpt."
+                    )
+                text = parts[0].get("text", "")
+                result = SummaryPayload.model_validate_json(text)
+                return Summary(
+                    **result.model_dump(),
+                    source="gemini_ai",
+                    model=self.model,
+                    note="Generated via Gemini API (BYOK). Advice only; check the original.",
+                )
+        except (
+            httpx.HTTPError,
+            ValidationError,
+            ValueError,
+            KeyError,
+            IndexError,
+            TypeError,
+            AttributeError,
+        ):
+            # Do not log exception details: HTTP bodies, URLs, and validation errors
+            # can contain email text or secrets.
+            logger.info("gemini_summary_unavailable")
+            return fallback(message, "Gemini inference unavailable; deterministic excerpt.")
+
+
+def get_summarizer(
+    provider: str | None = None,
+    api_key: str | None = None,
+    model: str | None = None,
+    host: str | None = None,
+    timeout: float | None = None,
+    client: httpx.Client | None = None,
+) -> LLMProvider:
+    provider_type = (
+        provider
+        or os.getenv("MOSSMAIL_PROVIDER")
+        or ("gemini" if (api_key or os.getenv("GEMINI_API_KEY")) else "local")
+    )
+    if provider_type == "gemini":
+        return GeminiSummarizer(api_key=api_key, model=model, timeout=timeout, client=client)
+    return LocalSummarizer(host=host, model=model, timeout=timeout, client=client)
