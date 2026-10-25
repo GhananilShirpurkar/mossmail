@@ -16,7 +16,7 @@ from mossmail.credentials import (
 from mossmail.decision_engine import decide
 from mossmail.mailbox import (
     GmailProvider,
-    extract_code_from_redirect,
+    OAuthError,
     sync_inbox,
 )
 from mossmail.models import Message, Override, State
@@ -400,56 +400,33 @@ if view == "Settings":
                 if st.button("Connect Gmail Account", type="primary", key="connect_gmail_btn"):
                     if not client_id_val.strip():
                         st.error("Please enter a valid Google OAuth Client ID.")
+                    elif not keyring_usable and not gmail_consent:
+                        st.error(
+                            "Explicit user consent is required before saving credentials "
+                            "without a secure keyring."
+                        )
                     else:
                         try:
                             gmail_provider.client_id = client_id_val.strip()
                             gmail_provider.client_secret = client_secret_val.strip()
-                            auth_url, verifier, state, r_uri = gmail_provider.start_auth_flow()
-                            st.session_state["_gmail_auth"] = {
-                                "auth_url": auth_url,
-                                "verifier": verifier,
-                                "state": state,
-                                "redirect_uri": r_uri,
-                                "consent": gmail_consent,
-                            }
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Failed to generate authorization URL: {e}")
-
-                if "_gmail_auth" in st.session_state:
-                    auth_state = st.session_state["_gmail_auth"]
-                    st.info("Step 1: Open the Google authorization link in your browser:")
-                    st.link_button(
-                        "👉 Authorize MossMail with Google",
-                        auth_state["auth_url"],
-                        type="primary",
-                    )
-                    st.caption(
-                        "Step 2: Sign in and approve read-only access. When redirected to localhost, "
-                        "copy the redirect URL or code from your browser address bar and paste it below:"
-                    )
-                    redirect_text = st.text_input(
-                        "Paste Redirect URL or Code",
-                        placeholder="http://127.0.0.1:8080/?code=4/0A...&state=...",
-                        key="gmail_redirect_input",
-                    )
-                    if st.button("Complete Connection", type="primary", key="complete_conn_btn"):
-                        try:
-                            code = extract_code_from_redirect(
-                                redirect_text, expected_state=auth_state["state"]
-                            )
-                            with st.spinner("Exchanging code for OAuth tokens with Google..."):
-                                gmail_provider.exchange_code_for_tokens(
-                                    code=code,
-                                    code_verifier=auth_state["verifier"],
-                                    redirect_uri=auth_state["redirect_uri"],
-                                    allow_unencrypted_fallback=auth_state.get("consent", False),
+                            auth_info = gmail_provider.start_auth_flow()
+                            auth_url, verifier, state, redirect_uri = auth_info
+                            with st.spinner(
+                                f"Waiting for authorization on {redirect_uri}... "
+                                "Your browser has opened Google's consent screen."
+                            ):
+                                gmail_provider.authenticate_via_loopback(
+                                    open_browser=True,
+                                    timeout_seconds=90.0,
+                                    allow_unencrypted_fallback=gmail_consent,
+                                    auth_info=auth_info,
                                 )
-                            st.session_state.pop("_gmail_auth", None)
                             st.success("Gmail successfully connected!")
                             st.rerun()
-                        except Exception as err:
+                        except OAuthError as err:
                             st.error(f"Authentication failed: {err}")
+                        except Exception as err:
+                            st.error(f"Failed to connect Gmail: {err}")
     with g_right:
         with st.container(border=True):
             st.html(

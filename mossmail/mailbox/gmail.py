@@ -7,7 +7,6 @@ import secrets
 import time
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from threading import Thread
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
@@ -94,6 +93,11 @@ class _LoopbackCallbackHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/favicon.ico":
+            self.send_response(204)
+            self.end_headers()
+            return
+
         params = parse_qs(parsed.query)
 
         server: _LoopbackServer = self.server  # type: ignore
@@ -119,11 +123,14 @@ class _LoopbackCallbackHandler(BaseHTTPRequestHandler):
                 "You can close this tab and return to the application.</p>"
                 "</body></html>"
             )
-        self.wfile.write(body.encode("utf-8"))
+        self.wfile.write(body.encode())
 
 
 def extract_code_from_redirect(redirect_text: str, expected_state: str | None = None) -> str:
-    """Extract authorization code from a redirect URL or raw authorization code."""
+    """Extract authorization code from a redirect URL or raw authorization code.
+
+    Kept for backwards compatibility and standalone redirect URL parsing.
+    """
     cleaned = redirect_text.strip()
     if not cleaned:
         raise OAuthError("Redirect URL or authorization code cannot be empty.")
@@ -143,7 +150,11 @@ def extract_code_from_redirect(redirect_text: str, expected_state: str | None = 
 
 
 class _LoopbackServer(HTTPServer):
-    query_params: dict[str, list[str]] = {}
+    allow_reuse_address = True
+
+    def __init__(self, server_address, RequestHandlerClass):
+        super().__init__(server_address, RequestHandlerClass)
+        self.query_params: dict[str, list[str]] = {}
 
 
 def find_available_loopback_port(preferred_port: int = 8080) -> int:
@@ -162,20 +173,21 @@ def run_loopback_receiver(
 ) -> dict[str, list[str]]:
     """Run local loopback server to receive the OAuth redirect code.
 
-    Binds strictly to 127.0.0.1. Terminates immediately after handling one request.
+    Binds strictly to 127.0.0.1.
     """
     server = _LoopbackServer(("127.0.0.1", port), _LoopbackCallbackHandler)
-    server.timeout = timeout_seconds
+    server.timeout = 1.0
 
-    def handle():
-        server.handle_request()
+    start_time = time.time()
+    try:
+        while time.time() - start_time < timeout_seconds:
+            server.handle_request()
+            if server.query_params:
+                break
+    finally:
+        server.server_close()
 
-    thread = Thread(target=handle, daemon=True)
-    thread.start()
-    thread.join(timeout=timeout_seconds)
-    server.server_close()
-
-    return getattr(server, "query_params", {})
+    return server.query_params
 
 
 class GmailProvider(MailboxProvider):
@@ -212,6 +224,57 @@ class GmailProvider(MailboxProvider):
             state=state,
         )
         return auth_url, verifier, state, redirect_uri
+
+    def authenticate_via_loopback(
+        self,
+        port: int = 8080,
+        timeout_seconds: float = 120.0,
+        open_browser: bool = True,
+        allow_unencrypted_fallback: bool = False,
+        auth_info: tuple[str, str, str, str] | None = None,
+    ) -> dict[str, str]:
+        """Perform automated Google OAuth 2.0 PKCE loopback authentication."""
+        if auth_info:
+            auth_url, verifier, state, redirect_uri = auth_info
+        else:
+            auth_url, verifier, state, redirect_uri = self.start_auth_flow(port=port)
+
+        if open_browser:
+            import webbrowser
+
+            try:
+                webbrowser.open(auth_url)
+            except Exception:
+                logger.info("browser_launch_failed")
+
+        actual_port = int(urlparse(redirect_uri).port or port)
+        params = run_loopback_receiver(port=actual_port, timeout_seconds=timeout_seconds)
+
+        if not params:
+            raise OAuthError(
+                "Authentication timed out or loopback receiver was cancelled before callback."
+            )
+
+        if "error" in params:
+            err = params["error"][0]
+            raise OAuthError(f"Google OAuth authorization denied: {err}")
+
+        codes = params.get("code")
+        if not codes:
+            raise OAuthError("No authorization code received from Google OAuth callback.")
+
+        # CSRF Protection: Validate state parameter
+        received_states = params.get("state")
+        if not received_states or received_states[0] != state:
+            raise OAuthError("OAuth state parameter mismatch (CSRF protection failed).")
+
+        code = codes[0]
+        return self.exchange_code_for_tokens(
+            code=code,
+            code_verifier=verifier,
+            redirect_uri=redirect_uri,
+            allow_unencrypted_fallback=allow_unencrypted_fallback,
+        )
 
     def is_connected(self) -> bool:
         """Return True if Gmail refresh token is present in the credential store."""

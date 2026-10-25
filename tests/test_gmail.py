@@ -351,3 +351,160 @@ def test_gmail_provider_has_no_mutation_methods():
     forbidden = {"send", "draft", "delete", "trash", "modify", "batch_modify", "update"}
     for attr in dir(GmailProvider):
         assert attr.lower() not in forbidden, f"Forbidden mutation method '{attr}' found!"
+
+
+def test_disconnect_clears_local_credentials_even_if_remote_revocation_fails(tmp_path):
+    mock_kr = MockKeyring()
+    mock_kr.set_password("mossmail", "gmail_client_id", "my-client-id")
+    mock_kr.set_password("mossmail", "gmail_refresh_token", "1//refresh-secret")
+    mock_kr.set_password("mossmail", "gmail_client_secret", "my-secret")
+    cred_store = CredentialStore(fallback_path=tmp_path / "creds.json", keyring_backend=mock_kr)
+
+    # Remote revoke endpoint fails with HTTP 500 error
+    def handler(request: httpx.Request):
+        return httpx.Response(500, json={"error": "internal_server_error"})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    provider = GmailProvider(credential_store=cred_store, client=client)
+    assert provider.is_connected() is True
+
+    # Must not raise exception, and must clear all local secrets
+    provider.disconnect()
+
+    assert provider.is_connected() is False
+    assert cred_store.get_secret("gmail_refresh_token") is None
+    assert cred_store.get_secret("gmail_client_id") is None
+    assert cred_store.get_secret("gmail_client_secret") is None
+
+
+def test_authenticate_via_loopback_success(tmp_path, monkeypatch):
+    mock_kr = MockKeyring()
+    cred_store = CredentialStore(fallback_path=tmp_path / "creds.json", keyring_backend=mock_kr)
+
+    def handler(request: httpx.Request):
+        assert request.method == "POST"
+        assert "oauth2.googleapis.com/token" in str(request.url)
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "ya29.loopback_access_token",
+                "refresh_token": "1//loopback_refresh_token",
+                "expires_in": 3600,
+                "scope": "https://www.googleapis.com/auth/gmail.readonly",
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    provider = GmailProvider(
+        client_id="test-client-id",
+        credential_store=cred_store,
+        client=client,
+    )
+
+    auth_info = provider.start_auth_flow()
+    flow_state = auth_info[2]
+
+    monkeypatch.setattr(
+        "mossmail.mailbox.gmail.run_loopback_receiver",
+        lambda port, timeout_seconds: {"code": ["loopback-auth-code"], "state": [flow_state]},
+    )
+
+    res = provider.authenticate_via_loopback(open_browser=False, auth_info=auth_info)
+    assert res["status"] == "authenticated"
+    assert provider.is_connected() is True
+    assert cred_store.get_secret("gmail_refresh_token") == "1//loopback_refresh_token"
+
+
+def test_authenticate_via_loopback_csrf_mismatch(tmp_path, monkeypatch):
+    mock_kr = MockKeyring()
+    cred_store = CredentialStore(fallback_path=tmp_path / "creds.json", keyring_backend=mock_kr)
+    provider = GmailProvider(client_id="test-client-id", credential_store=cred_store)
+
+    auth_info = provider.start_auth_flow()
+
+    monkeypatch.setattr(
+        "mossmail.mailbox.gmail.run_loopback_receiver",
+        lambda port, timeout_seconds: {
+            "code": ["code-123"],
+            "state": ["wrong-untrusted-csrf-state"],
+        },
+    )
+
+    with pytest.raises(OAuthError, match="OAuth state parameter mismatch"):
+        provider.authenticate_via_loopback(open_browser=False, auth_info=auth_info)
+
+
+def test_authenticate_via_loopback_denial(tmp_path, monkeypatch):
+    mock_kr = MockKeyring()
+    cred_store = CredentialStore(fallback_path=tmp_path / "creds.json", keyring_backend=mock_kr)
+    provider = GmailProvider(client_id="test-client-id", credential_store=cred_store)
+
+    auth_info = provider.start_auth_flow()
+
+    monkeypatch.setattr(
+        "mossmail.mailbox.gmail.run_loopback_receiver",
+        lambda port, timeout_seconds: {"error": ["access_denied"]},
+    )
+
+    with pytest.raises(OAuthError, match="authorization denied: access_denied"):
+        provider.authenticate_via_loopback(open_browser=False, auth_info=auth_info)
+
+
+def test_authenticate_via_loopback_timeout(tmp_path, monkeypatch):
+    mock_kr = MockKeyring()
+    cred_store = CredentialStore(fallback_path=tmp_path / "creds.json", keyring_backend=mock_kr)
+    provider = GmailProvider(client_id="test-client-id", credential_store=cred_store)
+
+    auth_info = provider.start_auth_flow()
+
+    # Receiver times out and returns empty dict
+    monkeypatch.setattr(
+        "mossmail.mailbox.gmail.run_loopback_receiver",
+        lambda port, timeout_seconds: {},
+    )
+
+    with pytest.raises(OAuthError, match="timed out"):
+        provider.authenticate_via_loopback(open_browser=False, auth_info=auth_info)
+
+
+def test_loopback_server_handles_favicon_and_callback():
+    import threading
+    import urllib.request
+
+    from mossmail.mailbox.gmail import _LoopbackCallbackHandler, _LoopbackServer
+
+    server = _LoopbackServer(("127.0.0.1", 0), _LoopbackCallbackHandler)
+    port = server.server_address[1]
+
+    # 1. Send favicon request - must be ignored with 204 and query_params remain empty
+    def req_favicon():
+        try:
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/favicon.ico")
+            with urllib.request.urlopen(req) as resp:
+                assert resp.status == 204
+        except Exception:
+            pass
+
+    t1 = threading.Thread(target=req_favicon)
+    t1.start()
+    server.handle_request()
+    t1.join()
+
+    assert server.query_params == {}
+
+    # 2. Send actual OAuth callback - must populate query_params and return 200
+    def req_callback():
+        try:
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/?code=testcode&state=teststate")
+            with urllib.request.urlopen(req) as resp:
+                assert resp.status == 200
+        except Exception:
+            pass
+
+    t2 = threading.Thread(target=req_callback)
+    t2.start()
+    server.handle_request()
+    t2.join()
+    server.server_close()
+
+    assert server.query_params == {"code": ["testcode"], "state": ["teststate"]}
