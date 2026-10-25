@@ -1,0 +1,21 @@
+[project]
+name = "mossmail"
+version = "0.1.0"
+description = "A calmer inbox. Less attention, better decisions."
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "auto"
+markers = ["temporal: real Temporal SDK test server (opt-in download)"]
+
+# Long HTML templates stay intact; Python layout is checked by Ruff formatter.
+[tool.ruff.lint.per-file-ignores]
+"app.py" = ["E501"]

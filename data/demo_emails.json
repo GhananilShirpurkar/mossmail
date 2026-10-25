@@ -1,0 +1,159 @@
+[
+  {
+    "id": "m01",
+    "thread_id": "thread-m01",
+    "sender_name": "Maya Chen",
+    "sender": "maya@cedar.example",
+    "recipients": [
+      "alex@cedar.example"
+    ],
+    "subject": "A small decision for Monday",
+    "body": "Could you review the two cover directions for the field guide? I would love your opinion before we share them with the team. No need for a long response; a preference is enough.",
+    "received_at": "2026-10-25T09:10:00+05:30",
+    "trusted_bulk": false,
+    "categories": [],
+    "has_attachments": false
+  },
+  {
+    "id": "m02",
+    "thread_id": "thread-m02",
+    "sender_name": "Cedar Finance",
+    "sender": "accounts@cedar.example",
+    "recipients": [
+      "alex@cedar.example"
+    ],
+    "subject": "Invoice 1048 needs your approval",
+    "body": "The studio invoice for the illustration work is ready for your approval. Payment is due on Friday. Please check the amount against the signed scope before approving.",
+    "received_at": "2026-10-25T09:30:00+05:30",
+    "trusted_bulk": false,
+    "categories": [
+      "financial",
+      "deadline"
+    ],
+    "has_attachments": false
+  },
+  {
+    "id": "m03",
+    "thread_id": "thread-m03",
+    "sender_name": "Cedar Security",
+    "sender": "security@cedar.example",
+    "recipients": [
+      "alex@cedar.example"
+    ],
+    "subject": "New sign-in on your workspace",
+    "body": "We noticed a sign-in from a new device. If this was not you, open your workspace settings directly and review your active sessions. Do not share your password by email.",
+    "received_at": "2026-10-25T08:10:00+05:30",
+    "trusted_bulk": false,
+    "categories": [
+      "security"
+    ],
+    "has_attachments": false
+  },
+  {
+    "id": "m04",
+    "thread_id": "thread-m04",
+    "sender_name": "Elena Torres",
+    "sender": "elena@orchard.example",
+    "recipients": [
+      "alex@cedar.example"
+    ],
+    "subject": "Could you take a look?",
+    "body": "I have attached the revised document. Could you take a look and let me know what you think?",
+    "received_at": "2026-10-25T08:30:00+05:30",
+    "trusted_bulk": false,
+    "categories": [],
+    "has_attachments": true
+  },
+  {
+    "id": "m05",
+    "thread_id": "thread-m05",
+    "sender_name": "Sam Rivera",
+    "sender": "sam@cedar.example",
+    "recipients": [
+      "alex@cedar.example"
+    ],
+    "subject": "Following up on the workshop outline",
+    "body": "Following up on the workshop outline I sent earlier. The team needs your feedback to choose the next step. Could you share your thoughts?",
+    "received_at": "2026-10-25T07:10:00+05:30",
+    "trusted_bulk": false,
+    "categories": [],
+    "has_attachments": false
+  },
+  {
+    "id": "m06",
+    "thread_id": "thread-m06",
+    "sender_name": "The Slow Journal",
+    "sender": "letters@slowjournal.example",
+    "recipients": [
+      "alex@cedar.example"
+    ],
+    "subject": "A little reading for a quiet afternoon",
+    "body": "This week: gardens that grow at their own pace, the pleasure of a paper notebook, and three essays on making room for rest. Read whenever you have a quiet moment.",
+    "received_at": "2026-10-25T07:30:00+05:30",
+    "trusted_bulk": true,
+    "categories": [],
+    "has_attachments": false
+  },
+  {
+    "id": "m07",
+    "thread_id": "thread-m07",
+    "sender_name": "Design Commons",
+    "sender": "digest@designcommons.example",
+    "recipients": [
+      "alex@cedar.example"
+    ],
+    "subject": "Your weekly collection of good ideas",
+    "body": "A new collection of type specimens, thoughtful interfaces, and conversations with independent makers. This is your weekly subscribed digest, ready whenever you are.",
+    "received_at": "2026-10-25T06:10:00+05:30",
+    "trusted_bulk": true,
+    "categories": [],
+    "has_attachments": false
+  },
+  {
+    "id": "m08",
+    "thread_id": "thread-m08",
+    "sender_name": "Neighborhood Notes",
+    "sender": "hello@neighborhood.example",
+    "recipients": [
+      "alex@cedar.example"
+    ],
+    "subject": "Notes from around the neighborhood",
+    "body": "A few small things from our community: photos from the weekend walk, a new mural on Oak Lane, and a playlist for your next slow Sunday. Enjoy at your own pace.",
+    "received_at": "2026-10-25T06:30:00+05:30",
+    "trusted_bulk": true,
+    "categories": [],
+    "has_attachments": false
+  },
+  {
+    "id": "m09",
+    "thread_id": "thread-m09",
+    "sender_name": "Cedar Legal",
+    "sender": "legal@cedar.example",
+    "recipients": [
+      "alex@cedar.example"
+    ],
+    "subject": "Contract review: illustration scope",
+    "body": "The revised contract includes updated usage rights for the field guide illustrations. Please review the legal terms before signing. The original document is available in the shared project folder.",
+    "received_at": "2026-10-25T05:10:00+05:30",
+    "trusted_bulk": false,
+    "categories": [
+      "legal"
+    ],
+    "has_attachments": false
+  },
+  {
+    "id": "m10",
+    "thread_id": "thread-m10",
+    "sender_name": "Rowan Lee",
+    "sender": "rowan@cedar.example",
+    "recipients": [
+      "alex@cedar.example"
+    ],
+    "subject": "The field guide files are ready",
+    "body": "The approved field guide files are now in the shared folder. Thanks for your thoughtful feedback on the color palette. Everything is ready for the next step.",
+    "received_at": "2026-10-25T05:30:00+05:30",
+    "trusted_bulk": false,
+    "categories": [],
+    "has_attachments": false
+  }
+]
