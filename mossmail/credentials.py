@@ -72,6 +72,9 @@ class CredentialStore:
         env_mapping = {
             "gemini_api_key": "GEMINI_API_KEY",
             "gemini_model": "GEMINI_MODEL",
+            "gmail_client_id": "GMAIL_CLIENT_ID",
+            "gmail_client_secret": "GMAIL_CLIENT_SECRET",
+            "gmail_refresh_token": "GMAIL_REFRESH_TOKEN",
         }
         env_var = env_mapping.get(key_name)
         if env_var and os.getenv(env_var):
@@ -155,6 +158,9 @@ class CredentialStore:
         env_mapping = {
             "gemini_api_key": "GEMINI_API_KEY",
             "gemini_model": "GEMINI_MODEL",
+            "gmail_client_id": "GMAIL_CLIENT_ID",
+            "gmail_client_secret": "GMAIL_CLIENT_SECRET",
+            "gmail_refresh_token": "GMAIL_REFRESH_TOKEN",
         }
         env_var = env_mapping.get(key_name)
         if env_var and os.getenv(env_var):

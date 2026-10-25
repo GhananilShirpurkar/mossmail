@@ -14,6 +14,11 @@ from mossmail.credentials import (
     validate_gemini_key,
 )
 from mossmail.decision_engine import decide
+from mossmail.mailbox import (
+    GmailProvider,
+    extract_code_from_redirect,
+    sync_inbox,
+)
 from mossmail.models import Message, Override, State
 from mossmail.storage import Store, load_demo
 from mossmail.summarizer import fallback, get_summarizer
@@ -51,6 +56,9 @@ else:
     db_path = Path(os.getenv("MOSSMAIL_DB", str(ROOT / ".local/mossmail.sqlite3")))
 store = Store(db_path)
 store.seed(load_demo(ROOT / "data/demo_emails.json"))
+cred_store = CredentialStore()
+gmail_provider = GmailProvider(credential_store=cred_store)
+
 # Idempotent, explicitly simulated seed events. No real mailbox is connected.
 for mid in ("m06", "m07", "m08"):
     if not store.history(mid):
@@ -70,11 +78,37 @@ with st.sidebar:
     )
     st.divider()
     st.html('<div class="eyebrow">YOUR WORKSPACE</div>')
-    st.caption("Cedar Studio · synthetic collection")
-    st.html(
-        badge("DEMO MODE")
-        + '<p class="micro">Every message is fictional.<br>No mailbox is connected.</p>'
-    )
+    if gmail_provider.is_connected():
+        st.html(
+            badge("GMAIL CONNECTED", kind="green")
+            + '<p class="micro">Read-only inbox access active.<br>No emails can be modified.</p>'
+        )
+        if st.button(
+            "Sync Inbox Now",
+            type="primary",
+            use_container_width=True,
+            key="sidebar_sync_btn",
+        ):
+            with st.spinner("Syncing inbox messages from Gmail..."):
+                report = sync_inbox(gmail_provider, store, limit=20)
+            if report.errors:
+                st.warning(
+                    f"Sync finished with {len(report.errors)} issue(s). "
+                    f"Imported {report.new_count} new message(s)."
+                )
+            else:
+                st.success(
+                    f"Sync complete: {report.new_count} new message(s), "
+                    f"{report.escalated_count} thread(s) escalated."
+                )
+            st.rerun()
+    else:
+        st.caption("Cedar Studio · synthetic collection")
+        st.html(
+            badge("DEMO MODE")
+            + '<p class="micro">Every message is fictional.<br>No mailbox is connected.</p>'
+        )
+        st.caption("Connect real Gmail in Settings.")
     st.divider()
     st.html(f'<div class="eyebrow">{"HOSTED DEMO" if HOSTED_DEMO else "RUNNING LOCALLY"}</div>')
     st.caption("Policy · transparent baseline")
@@ -291,6 +325,145 @@ if view == "Settings":
                 - **What is NOT sent?** Email headers, DKIM/auth tokens, attachments, IP addresses, and recipient lists are strictly excluded.
                 - **Offline option:** Select Local Ollama for complete air-gapped processing on your own hardware.
                 - **Google Terms:** Free-tier keys are governed by Google AI Studio Terms. Paid tier keys provide zero-data-retention.
+                """
+            )
+
+    st.divider()
+    st.subheader("Gmail Integration (Read-Only)")
+    st.caption(
+        "Connect your real Gmail inbox for local email triage. "
+        "MossMail requests strictly read-only access."
+    )
+    g_left, g_right = st.columns([1.4, 1], gap="large")
+    with g_left:
+        with st.container(border=True):
+            if gmail_provider.is_connected():
+                st.success("Gmail is connected (Read-Only).")
+                st.caption(
+                    "MossMail has permission only to read inbox messages. "
+                    "It cannot send, modify, delete, or archive any email."
+                )
+                sync_col1, sync_col2 = st.columns(2)
+                with sync_col1:
+                    if st.button("Sync Inbox Now", type="primary", key="sync_btn_settings"):
+                        with st.spinner("Syncing recent messages from Gmail..."):
+                            report = sync_inbox(gmail_provider, store, limit=20)
+                        if report.errors:
+                            st.warning(
+                                f"Sync finished with {len(report.errors)} issue(s). "
+                                f"Imported {report.new_count} new message(s)."
+                            )
+                        else:
+                            st.success(
+                                f"Sync complete: {report.new_count} new message(s), "
+                                f"{report.escalated_count} thread(s) escalated."
+                            )
+                        st.rerun()
+                with sync_col2:
+                    if st.button("Disconnect Gmail", type="secondary", key="disconnect_gmail"):
+                        gmail_provider.disconnect()
+                        st.success("Disconnected Gmail and purged credentials from your vault.")
+                        st.rerun()
+            else:
+                st.caption(
+                    "Bring your own Google OAuth Client ID (type: 'Desktop app'). "
+                    "Credentials are encrypted in your OS Keyring."
+                )
+                client_id_val = st.text_input(
+                    "Google OAuth Client ID",
+                    value=cred_store.get_secret("gmail_client_id") or "",
+                    placeholder="xxxxxxxxxxxx-xxxxxxxxxxxxxxxx.apps.googleusercontent.com",
+                    help="Obtain this from Google Cloud Console under Credentials > OAuth 2.0 Client IDs.",
+                    key="input_gmail_client_id",
+                )
+                client_secret_val = st.text_input(
+                    "Google OAuth Client Secret (Optional for Desktop PKCE)",
+                    value=cred_store.get_secret("gmail_client_secret") or "",
+                    type="password",
+                    placeholder="GOCSPX-...",
+                    help="Client secret for your Desktop app OAuth client.",
+                    key="input_gmail_client_secret",
+                )
+
+                keyring_usable = cred_store.is_keyring_usable()
+                gmail_consent = False
+                if not keyring_usable:
+                    st.warning(
+                        "⚠️ Secure OS keyring unavailable. Storing OAuth tokens requires writing to "
+                        "`.local/credentials.json` (mode 0600, unencrypted at rest)."
+                    )
+                    gmail_consent = st.checkbox(
+                        "Authorize storing Gmail OAuth tokens in unencrypted local file (mode 0600)",
+                        key="gmail_consent_unencrypted",
+                    )
+
+                if st.button("Connect Gmail Account", type="primary", key="connect_gmail_btn"):
+                    if not client_id_val.strip():
+                        st.error("Please enter a valid Google OAuth Client ID.")
+                    else:
+                        try:
+                            gmail_provider.client_id = client_id_val.strip()
+                            gmail_provider.client_secret = client_secret_val.strip()
+                            auth_url, verifier, state, r_uri = gmail_provider.start_auth_flow()
+                            st.session_state["_gmail_auth"] = {
+                                "auth_url": auth_url,
+                                "verifier": verifier,
+                                "state": state,
+                                "redirect_uri": r_uri,
+                                "consent": gmail_consent,
+                            }
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to generate authorization URL: {e}")
+
+                if "_gmail_auth" in st.session_state:
+                    auth_state = st.session_state["_gmail_auth"]
+                    st.info("Step 1: Open the Google authorization link in your browser:")
+                    st.link_button(
+                        "👉 Authorize MossMail with Google",
+                        auth_state["auth_url"],
+                        type="primary",
+                    )
+                    st.caption(
+                        "Step 2: Sign in and approve read-only access. When redirected to localhost, "
+                        "copy the redirect URL or code from your browser address bar and paste it below:"
+                    )
+                    redirect_text = st.text_input(
+                        "Paste Redirect URL or Code",
+                        placeholder="http://127.0.0.1:8080/?code=4/0A...&state=...",
+                        key="gmail_redirect_input",
+                    )
+                    if st.button("Complete Connection", type="primary", key="complete_conn_btn"):
+                        try:
+                            code = extract_code_from_redirect(
+                                redirect_text, expected_state=auth_state["state"]
+                            )
+                            with st.spinner("Exchanging code for OAuth tokens with Google..."):
+                                gmail_provider.exchange_code_for_tokens(
+                                    code=code,
+                                    code_verifier=auth_state["verifier"],
+                                    redirect_uri=auth_state["redirect_uri"],
+                                    allow_unencrypted_fallback=auth_state.get("consent", False),
+                                )
+                            st.session_state.pop("_gmail_auth", None)
+                            st.success("Gmail successfully connected!")
+                            st.rerun()
+                        except Exception as err:
+                            st.error(f"Authentication failed: {err}")
+    with g_right:
+        with st.container(border=True):
+            st.html(
+                '<div class="principle"><div class="eyebrow">RESTRICTED SCOPE DISCLOSURE</div>'
+                '<h2>Google OAuth & Privacy Guarantees</h2>'
+                '<p>Your mailbox access is strictly limited by design.</p></div>'
+            )
+            st.markdown(
+                """
+                - **Scope:** `https://www.googleapis.com/auth/gmail.readonly` only.
+                - **Zero Mutations:** MossMail contains no code to send, delete, label, archive, or modify emails.
+                - **Restricted Scope Policy:** Google designates `gmail.readonly` as a Restricted Scope. Public multi-user cloud applications must undergo CASA Tier 2 security assessments and Google verification.
+                - **Local-First Architecture:** As a local self-hosted open-source application, MossMail runs on your machine. You bring your own Google Cloud OAuth 2.0 Desktop Client ID.
+                - **Token Storage:** Refresh tokens are stored locally in your operating system credential store (Keyring/SecretService) and never uploaded.
                 """
             )
     st.stop()

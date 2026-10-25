@@ -2,10 +2,14 @@
 
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from email import policy
-from email.message import Message
+from email.message import Message as EmailMessage
 from email.parser import BytesParser
+from email.utils import parseaddr, parsedate_to_datetime
 from html.parser import HTMLParser
+
+from .models import Message as DomainMessage
 
 
 class VisibleHTML(HTMLParser):
@@ -73,7 +77,7 @@ def prepare_message(raw: bytes) -> PreparedText:
     try:
         root = BytesParser(policy=policy.default).parsebytes(raw)
 
-        def extract(part: Message, depth: int = 0) -> str:
+        def extract(part: EmailMessage, depth: int = 0) -> str:
             if depth > 30:
                 notes.append("MIME nesting limit reached.")
                 return ""
@@ -118,3 +122,104 @@ def prepare_message(raw: bytes) -> PreparedText:
         return PreparedText(raw, text, latest, uncertain or bool(notes), tuple(notes))
     except (ValueError, TypeError, RecursionError):
         return PreparedText(raw, "", "", True, ("Parsing failed; inspect the original.",))
+
+
+def parse_email_to_message(
+    raw: bytes,
+    provider_id: str,
+    thread_id: str | None = None,
+    internal_date: datetime | None = None,
+) -> DomainMessage:
+    """Parse raw RFC 822 email bytes into a normalized domain Message object."""
+    prepared = prepare_message(raw)
+    try:
+        root = BytesParser(policy=policy.default).parsebytes(raw)
+    except Exception:
+        root = None
+
+    subject = ""
+    sender_name = ""
+    sender = ""
+    recipients: list[str] = []
+    received_at = internal_date
+    references: list[str] = []
+    categories: list[str] = []
+    trusted_bulk = False
+    has_attachments = any("attachment" in n.lower() for n in prepared.notes)
+
+    if root is not None:
+        raw_subj = root.get("Subject", "")
+        subject = str(raw_subj).strip() or "(no subject)"
+
+        raw_from = root.get("From", "")
+        if raw_from:
+            parsed_name, parsed_addr = parseaddr(str(raw_from))
+            sender = parsed_addr.strip().lower()
+            sender_name = parsed_name.strip() or (sender.split("@")[0] if "@" in sender else sender)
+
+        for hdr in ("To", "Cc"):
+            for addr_val in root.get_all(hdr, []):
+                for part in str(addr_val).split(","):
+                    _, email_addr = parseaddr(part)
+                    clean_addr = email_addr.strip().lower()
+                    if clean_addr and clean_addr not in recipients:
+                        recipients.append(clean_addr)
+
+        if received_at is None:
+            raw_date = root.get("Date")
+            if raw_date:
+                try:
+                    dt = parsedate_to_datetime(str(raw_date))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=UTC)
+                    received_at = dt
+                except Exception:
+                    pass
+
+        ref_header = root.get("References", "")
+        in_reply_to = root.get("In-Reply-To", "")
+        for val in (str(ref_header), str(in_reply_to)):
+            for token in re.findall(r"<[^>]+>", val):
+                if token not in references:
+                    references.append(token)
+
+        if root.get("List-Unsubscribe") or str(root.get("Precedence", "")).lower() == "bulk":
+            trusted_bulk = True
+            if "newsletter" not in categories:
+                categories.append("newsletter")
+
+        try:
+            for part in root.walk():
+                if part.get_content_disposition() == "attachment" or bool(part.get_filename()):
+                    has_attachments = True
+                    break
+        except Exception:
+            pass
+
+    if not sender:
+        sender = "unknown@unknown.local"
+        sender_name = "Unknown Sender"
+
+    if received_at is None:
+        received_at = datetime.now(UTC)
+    elif received_at.tzinfo is None:
+        received_at = received_at.replace(tzinfo=UTC)
+
+    body_text = prepared.full_text if prepared.full_text else prepared.latest_text
+
+    return DomainMessage(
+        id=provider_id,
+        thread_id=thread_id or provider_id,
+        sender=sender,
+        sender_name=sender_name,
+        recipients=recipients or [sender],
+        subject=subject[:300],
+        body=body_text,
+        received_at=received_at,
+        references=references,
+        categories=categories,
+        trusted_bulk=trusted_bulk,
+        has_attachments=has_attachments,
+        parse_uncertain=prepared.uncertain,
+        follow_up=False,
+    )
