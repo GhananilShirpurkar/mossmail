@@ -10,3 +10,5 @@ Captured from local Chromium and Streamlit using `scripts/capture_ui.py`. All cr
 - [Narrow inbox — isolated test fixtures](06-narrow-inbox-test-fixtures.png)
 
 The populated screenshots intentionally identify every message as **UI TEST FIXTURE**. These records are created only by this explicitly invoked capture tool in a temporary SQLite database and removed when it exits. The capture also verifies Tab/Enter setup dismissal and keyboard activation of a local resolution that survives reload. Older screenshots in the parent directory show the historical prototype.
+
+The README also links a [current 60-second video](../../demo.md) through a [poster captured from that recording](demo-preview.png). Its two fictional messages are labeled **TEST INBOX** and come from a separate temporary database.

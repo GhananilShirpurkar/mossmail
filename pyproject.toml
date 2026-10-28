@@ -1,7 +1,7 @@
 [project]
 name = "mossmail"
 version = "0.1.0"
-description = "A calmer inbox. Less attention, better decisions."
+description = "Read-only Gmail triage with transparent rules and local decisions."
 requires-python = ">=3.12"
 
 [tool.ruff]
