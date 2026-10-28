@@ -1,3 +1,5 @@
+> Historical prototype record. Demo behavior and screenshots described below are retired from the product. See the [current README](../README.md) and [verification notes](validation.md) for supported behavior.
+
 ---
 title: "MossMail: a calmer inbox that knows when to wait"
 published: false

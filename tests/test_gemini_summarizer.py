@@ -79,11 +79,7 @@ def test_gemini_header_contains_key_and_not_in_url(message, monkeypatch):
                 "candidates": [
                     {
                         "content": {
-                            "parts": [
-                                {
-                                    "text": '{"summary":"Test.","proposed_action":"Action."}'
-                                }
-                            ]
+                            "parts": [{"text": '{"summary":"Test.","proposed_action":"Action."}'}]
                         }
                     }
                 ]
@@ -132,7 +128,7 @@ def test_gemini_missing_api_key_falls_back(message, monkeypatch):
     monkeypatch.delenv("MOSSMAIL_SUMMARIZER", raising=False)
     summarizer = GeminiSummarizer(api_key="")
     result = summarizer.summarize(message)
-    assert result.source == "demo_fallback"
+    assert result.source == "deterministic_excerpt"
     assert "API key is not configured" in result.note
 
 
@@ -152,7 +148,7 @@ def test_gemini_invalid_json_falls_back(message, malformed_content, monkeypatch)
         api_key="test-gemini-key", model="gemini-3.8-flash", client=client
     )
     result = summarizer.summarize(message)
-    assert result.source == "demo_fallback"
+    assert result.source == "deterministic_excerpt"
 
 
 def test_gemini_empty_candidates_or_parts_falls_back(message, monkeypatch):
@@ -162,7 +158,7 @@ def test_gemini_empty_candidates_or_parts_falls_back(message, monkeypatch):
         api_key="test-gemini-key", model="gemini-3.8-flash", client=client_empty
     )
     result = summarizer.summarize(message)
-    assert result.source == "demo_fallback"
+    assert result.source == "deterministic_excerpt"
 
 
 def test_gemini_http_error_falls_back_and_redacts_secrets(message, caplog, monkeypatch):
@@ -176,14 +172,12 @@ def test_gemini_http_error_falls_back_and_redacts_secrets(message, caplog, monke
         raise httpx.ConnectError("Connection refused by upstream", request=request)
 
     client = httpx.Client(transport=httpx.MockTransport(failing_handler))
-    summarizer = GeminiSummarizer(
-        api_key=secret_key, model="gemini-3.8-flash", client=client
-    )
+    summarizer = GeminiSummarizer(api_key=secret_key, model="gemini-3.8-flash", client=client)
 
     with caplog.at_level(logging.INFO, logger="mossmail.inference"):
         result = summarizer.summarize(private_message)
 
-    assert result.source == "demo_fallback"
+    assert result.source == "deterministic_excerpt"
     assert "gemini_summary_unavailable" in caplog.text
     # Verify no credentials or private email bodies leaked to log records
     assert secret_key not in caplog.text
@@ -205,7 +199,7 @@ def test_gemini_parse_uncertainty_skips_call(message, monkeypatch):
     )
 
     result = summarizer.summarize(uncertain_msg)
-    assert result.source == "demo_fallback"
+    assert result.source == "deterministic_excerpt"
     assert "uncertain" in result.note.casefold()
     assert len(called) == 0
 
@@ -272,14 +266,12 @@ def test_gemini_timeout_falls_back_safely(message, monkeypatch, caplog):
         raise httpx.ReadTimeout("Read timed out after 30s", request=request)
 
     client = httpx.Client(transport=httpx.MockTransport(timeout_handler))
-    summarizer = GeminiSummarizer(
-        api_key="test-key", model="gemini-3.8-flash", client=client
-    )
+    summarizer = GeminiSummarizer(api_key="test-key", model="gemini-3.8-flash", client=client)
 
     with caplog.at_level(logging.INFO, logger="mossmail.inference"):
         result = summarizer.summarize(message)
 
-    assert result.source == "demo_fallback"
+    assert result.source == "deterministic_excerpt"
     assert "gemini_summary_unavailable" in caplog.text
 
 
@@ -298,7 +290,7 @@ def test_gemini_safety_block_without_parts_falls_back(message, monkeypatch):
         api_key="test-gemini-key", model="gemini-3.8-flash", client=client
     )
     result = summarizer.summarize(message)
-    assert result.source == "demo_fallback"
+    assert result.source == "deterministic_excerpt"
     assert "no text parts" in result.note
 
 
@@ -310,5 +302,4 @@ def test_gemini_status_codes_fallback(message, monkeypatch, status_code):
         api_key="test-gemini-key", model="gemini-3.8-flash", client=client
     )
     result = summarizer.summarize(message)
-    assert result.source == "demo_fallback"
-
+    assert result.source == "deterministic_excerpt"

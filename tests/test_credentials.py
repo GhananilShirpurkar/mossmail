@@ -301,3 +301,18 @@ def test_env_var_precedence_overridden_by_keyring_and_file(tmp_path, monkeypatch
     assert store_keyring.get_storage_type("gemini_api_key") == "keyring"
 
 
+def test_failed_keyring_removal_is_not_silent(tmp_path):
+    from mossmail.credentials import CredentialRemovalError
+
+    class LockedKeyring(MockKeyring):
+        def delete_password(self, service, username):
+            raise RuntimeError("sensitive-backend-detail")
+
+    kr = LockedKeyring()
+    store = CredentialStore(fallback_path=tmp_path / "creds.json", keyring_backend=kr)
+    store.set_secret("gemini_api_key", "private-key")
+    with pytest.raises(CredentialRemovalError) as error:
+        store.delete_secret("gemini_api_key")
+    assert "private-key" not in str(error.value)
+    assert "sensitive-backend-detail" not in str(error.value)
+    assert store.get_secret("gemini_api_key") == "private-key"

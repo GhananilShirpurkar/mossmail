@@ -1,3 +1,5 @@
+> Historical prototype record. Demo behavior and screenshots described below are retired from the product. See the [current README](../README.md) and [verification notes](validation.md) for supported behavior.
+
 # Submission audit
 
 Checked against the [official Week 3 page](https://dev.to/challenges/hacktoberfest-week3-2026-10-19), its linked [submission template](https://dev.to/new), and [contest rules](https://dev.to/page/hacktoberfest-week3-2026-10-19-contest-rules) on 25 October 2026.

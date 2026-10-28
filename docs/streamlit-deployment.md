@@ -1,11 +1,7 @@
-# Streamlit Community Cloud
+# Deployment boundary
 
-Live demo: **[mossmail.streamlit.app](https://mossmail.streamlit.app/)**. Verified in a browser on 25 October 2026 with the hosted-demo and fallback-excerpt labels visible and the developer toolbar hidden.
+Run MossMail as a single-user local app, bound to loopback. `app.py` uses persisted local state and never seeds fictional messages. `streamlit_app.py` is a public landing page with local run instructions: it never opens credentials, databases, or integrations.
 
-Deploy `streamlit_app.py` from `GhananilShirpurkar/mossmail`, branch `main`, with Python 3.13 in Advanced settings. No secrets are required. The root `requirements.txt` installs the runtime dependencies. Keep the local-only `app.py` entrypoint for personal use.
+The old Community Cloud sandbox and synthetic session behavior are retired in this source version. Historical hosted screenshots and videos do not describe current behavior. This repository has no per-user authentication, credential namespace, or database tenancy. Do not deploy this entrypoint as a public shared service with personal credentials. Desktop OAuth also requires a browser on the same machine as the loopback listener.
 
-The cloud entrypoint uses only the bundled synthetic messages. Each browser session gets its own temporary SQLite database, so visitors cannot change each other's inbox. Session state is disposable and is not durable cloud storage. It bypasses Ollama entirely and labels summaries as demo excerpts. The real local Gemma and separate Temporal worker remain available when running locally.
-
-Streamlit's developer toolbar, Deploy control, and options menu are hidden by `client.toolbarMode="minimal"` and narrowly scoped CSS. The sidebar toggle and MossMail's own actions remain usable.
-
-The README's original screenshots and video document the initial local Gemma demonstration. They may show Streamlit toolbar elements removed in this update.
+See [first-run setup](setup.md) and the README for supported local configuration.

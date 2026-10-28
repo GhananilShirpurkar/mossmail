@@ -1,3 +1,5 @@
+> Historical prototype record. Demo behavior and screenshots described below are retired from the product. See the [current README](../README.md) and [verification notes](validation.md) for supported behavior.
+
 # Real UI demo
 
 All shown messages, sender identities, and organizations are fictional. The recording is captured with Playwright from the actual running Streamlit application. The delivered recording is 107.08 seconds at 1440 × 1100. It has no voiceover, fabricated frames, or real mailbox content.

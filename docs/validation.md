@@ -1,62 +1,44 @@
-# Validation evidence
+# Verification — UI and first-run overhaul
 
-Validated on 25 October 2026 on Linux with Python 3.13.7, Streamlit 1.66.1, Temporal Python SDK 1.34.0, and Playwright 1.64.1. Versions are recorded in `requirements.lock.txt`.
+Verified locally on 2026-10-28. These checks establish tested behavior, not a production-readiness certification.
 
-## Automated checks
+## Commands executed
 
-Final combined test command:
+- `.venv/bin/ruff check .` — passed.
+- `.venv/bin/ruff format --check .` — passed.
+- `MOSSMAIL_TEMPORAL_TESTS=1 .venv/bin/pytest -q` — **153 passed**, including all seven opt-in Temporal tests and the local OAuth callback socket test.
+- `.venv/bin/pytest -q` was also run during implementation, with Temporal disabled as documented.
+- `PLAYWRIGHT_BROWSERS_PATH=/tmp/mossmail-playwright .venv/bin/python scripts/capture_ui.py` — passed; Chromium launched an isolated Streamlit instance, navigated setup/settings/inbox, verified no seeded messages, dismissed setup using Tab/Enter, activated a local resolution using Enter, verified persistence after reload, and checked the collapsed sidebar at a narrow viewport.
+- `git diff --check` — passed.
 
-```text
-MOSSMAIL_TEMPORAL_TESTS=1 .venv/bin/pytest -q
-66 passed in 2.17s
-```
+The existing Playwright development dependency was used. Chromium was downloaded into `/tmp/mossmail-playwright`; no application dependencies were added. The initial sandboxed suite could not bind the OAuth callback socket; successful complete runs used permission to bind loopback. The dedicated browser tool exposed no browsers, so the repository's Playwright tooling supplied rendered verification.
 
-`ruff check .` and `ruff format --check .` passed. The default offline test suite consists of 59 tests; seven Temporal integration cases are skipped unless explicitly enabled. No mailbox credentials, external model account, or downloaded model weights are required by any test. The first Temporal integration run downloads its SDK test-server binary.
+## Coverage and safety review
 
-Coverage includes:
+Regression coverage includes empty installations, persistent dismissal via skip/close, reopening and finishing optional setup, missing OAuth configuration, persistence across app reload, failed and partial synchronization, successful empty synchronization, deterministic excerpts without inference success, overdue local deferrals, untrusted header escaping, strict granted-scope validation, missing OAuth tokens, sanitized failure guidance, failed keyring removal, consent-gated file storage, transactional import/escalation rollback, and a hosted landing page that cannot access private state.
 
-- MIME alternatives, nested attached messages, charsets, HTML extraction, short replies, quoted text, ambiguous forwards, empty and oversized messages.
-- Protected senders; financial, urgent, legal, security, and deadline signals; Unicode normalization; exact risk/uncertainty boundaries; attachments and unknown mail; current and stale user overrides.
-- Missing Ollama, missing models, malformed model lists, invalid/extra JSON fields, remote endpoint rejection, prompt-injection separation from policy, and privacy-safe error logging.
-- Concurrent repeated events, duplicate scheduling, stale timers and signals, follow-up/risk reactivation, timer expiry, user resolution, and content-free ledger entries.
-- Hosted-adapter consent and class-order handling with a fake SDK. This is a contract test, not a hosted inference run.
-- Streamlit's real Python application via AppTest, with no model services: rendering, user resolution, waiting-room navigation, and follow-up simulation.
+Existing policy, parser, credential, summarizer, synchronization, storage, scoring and Temporal regression coverage remains in the complete suite. Import and escalation counts advance only after database commit. Existing messages and history are never automatically removed. Previously seeded sample messages in older databases are intentionally retained as existing data.
 
-## Real Temporal SDK tests
+## Screenshots
 
-Seven tests run real workers against Temporal's time-skipping test server: timer expiry, follow-up, risk signal, user resolution, retry after a committed database write, worker replacement with history replay, and a follow-up arriving during an in-flight expiry activity. The recovery case stops the first worker, persists a signal while no worker is running, starts another worker, then replays the history. Workflow caching is disabled in that case to force cold replay and avoid waiting for the previous worker's sticky queue.
+The [current screenshots](screenshots/current/README.md) were captured from the actual local Streamlit application. Populated inbox screenshots use conspicuously labeled **UI TEST FIXTURE** messages in a temporary database. The capture process disables OS keyring access, strips provider environment credentials, and points file credentials at a temporary path. No personal inbox or credential values were captured.
 
-An earlier recovery-test version hit its 15-second timeout while waiting on sticky-queue scheduling. The final test uses cold replay and a bounded 30-second result wait. The final full suite passed. A final review also identified and fixed a signal-versus-expiry race: the workflow now processes a newer signal after its in-flight activity returns. This is not a claim of production-scale availability, a multi-host database deployment, or a tested production server restart.
+Screens reviewed: welcome, unconfigured empty inbox, settings with local provider, Gemini settings, populated fixture inbox, and narrow fixture inbox. Reduced-motion settings and explicit sidebar-position checks avoid screenshots taken during responsive transitions.
 
-## Genuine local inference
+## Still requires manual verification
 
-Ollama's installed-model list contained `gemma2:2b` and `qwen2.5:3b`; `gemma3:4b` was not installed. The application default remains `gemma3:4b`, and the actual capture explicitly configured `OLLAMA_MODEL=gemma2:2b`.
+- Real Gmail consent, token refresh/revocation, testing-account restrictions, and synchronization against a permitted account.
+- Real Gemini model availability, API-key validation, quotas, and response behavior for the user's account.
+- The default `gemma3:4b` model is not installed in this environment. Set `OLLAMA_MODEL=gemma2:2b` to use the installed model verified below, or install the default model yourself.
+- The target desktop's actual OS keyring backend, including locked-vault behavior.
+- Broader screen-reader, mobile, and cross-browser testing beyond Chromium navigation, keyboard setup dismissal/local resolution, and the tested narrow layout.
 
-An actual local call on synthetic message `m01` returned a schema-valid summary:
+Google requests in automated tests use mocks. Temporal integration tests run the real SDK test server; they do not validate a deployed Temporal cluster. No live Gmail, Gemini or hosted TabPFN integration was exercised for this overhaul. The local Ollama check below used a real installed model.
 
-> The sender requests feedback on two cover directions for the field guide, asking for a simple preference.
+## Follow-up live local checks
 
-Its proposed action was to review those directions and provide a preference before team sharing. The result was marked `source=local_ai`, `model=gemma2:2b`. This confirms execution on that example; it is not a quality benchmark. The browser captures also display successful local inference and identify the model.
+A secret-safe credential-status check found no configured Gmail OAuth client, refresh token, or Gemini API key, and no usable OS keyring in this session. No secrets were printed, created, or changed; no consent to unencrypted storage was inferred.
 
-## Browser evidence
+A read-only loopback request to Ollama `/api/tags` succeeded. Installed models were `gemma2:2b` and `qwen2.5:3b`; the configured default `gemma3:4b` was absent. Calling `LocalSummarizer(model="gemma2:2b", timeout=45).summarize(...)` with isolated synthetic text succeeded with `source="local_ai"`. The deterministic decision was identical before and after inference. No mailbox content was read, no messages were persisted, no model was downloaded, and no application settings were changed by this check.
 
-The screenshot and video script controls a real Chromium browser against the running Streamlit app. It uses only the fictional example collection. It checks for Streamlit exceptions and verifies that follow-up and expiry events appear in the activity view. Screenshots are inspected for readable layout; no UI state or model output is painted into an image.
-
-See `docs/demo.md` for capture reproduction and artifact descriptions. Model inference and page readiness are awaited before capturing message details. A preliminary screenshot caught a Streamlit rerun before the selected message finished rendering; the capture script was corrected to wait for that message's financial-risk evidence before taking the final screenshot.
-
-The installed application was additionally checked in Chromium at 1440 × 1100 and 390 × 844: the default missing-model fallback rendered without Streamlit exceptions or horizontal overflow.
-
-## Unverified or intentionally absent
-
-- Hosted TabPFN inference and its quality: no hosted account was used or mailbox feature data transmitted.
-- `gemma3:4b` inference: default configuration provided, model not installed on this machine.
-- Real mailbox synchronization, OAuth, write access, attachments, production authentication, and production mailbox deployment: not implemented.
-- Real-user feedback, time savings, training metrics, and generalization: not measured.
-- DEV publication: a prepared article in the repository only. Eligibility and publishing remain with the author.
-
-
-## Community Cloud release
-
-The hosted release is available at [mossmail.streamlit.app](https://mossmail.streamlit.app/). A real browser verified the deployed inbox, synthetic collection, session-isolation notice, labeled fallback excerpts, and absence of the developer toolbar. `docs/screenshots/05-hosted-demo.png` is a genuine capture of that deployment.
-
-The cloud entrypoint adds a regression test proving that two independent sessions use different databases, that one visitor's resolution does not change the other visitor's state, and that the hosted demo never invokes Ollama. Both published GitHub Actions jobs passed for commit `879f1e9`: 60 offline tests and seven real Temporal cases passed (67 tests across the two jobs); the original 66-test result above records the initial local release. The hosted demo is not evidence of cloud Gemma inference or a live Temporal server.
+The isolated Chromium capture script was rerun successfully with keyboard checks: Tab from **Set up now** focused **Skip for now**, Enter dismissed setup, and Enter on **Mark resolved** persisted the local decision across reload. The six screenshots were refreshed. Lint, format checking, and `git diff --check` passed again. Application code did not change during this follow-up; the previously completed full suite remains **153 passed**, including real Temporal tests.

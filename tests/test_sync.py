@@ -161,3 +161,55 @@ def test_sync_partial_failure_tolerance(tmp_path):
     assert len(report.errors) == 1
     assert "fail_02" in report.errors[0]
     assert len(store.all()) == 2
+
+
+def test_list_failure_never_leaks_exception_or_creates_data(tmp_path):
+    class Offline(MockMailboxProvider):
+        def list_messages(self, **kwargs):
+            raise RuntimeError("secret-token-and-email-content")
+
+    store = Store(tmp_path / "offline.db")
+    report = sync_inbox(Offline([]), store)
+    assert report.errors
+    assert "secret-token-and-email-content" not in str(report.errors)
+    assert report.new_count == 0
+    assert store.all() == []
+
+
+def test_failed_followup_persistence_rolls_back_import(tmp_path, message, monkeypatch):
+    store = Store(tmp_path / "atomic.db")
+    store.seed([message])
+    store.transition(message.id, "park", "park")
+    reply = message.model_copy(update={"id": "new-reply"})
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("private-error")
+
+    monkeypatch.setattr(store, "transition", fail)
+    report = sync_inbox(MockMailboxProvider([reply]), store)
+    assert report.new_count == 0
+    assert report.escalated_count == 0
+    assert report.errors
+    assert len(store.all()) == 1
+    assert store.get(message.id)["parked"]
+    assert "private-error" not in str(report.errors)
+
+
+def test_sync_errors_give_distinct_safe_guidance():
+    from mossmail.mailbox.gmail import (
+        NetworkError,
+        PermissionDeniedError,
+        RateLimitError,
+        TokenRevokedError,
+    )
+    from mossmail.mailbox.sync import sync_guidance
+
+    errors = [
+        NetworkError("secret"),
+        PermissionDeniedError("secret"),
+        RateLimitError("secret"),
+        TokenRevokedError("secret"),
+    ]
+    guidance = [sync_guidance(error) for error in errors]
+    assert len(set(guidance)) == 4
+    assert all("secret" not in text for text in guidance)

@@ -45,6 +45,14 @@ class GmailAPIError(Exception):
     """Base exception for Gmail API request failures."""
 
 
+class NetworkError(GmailAPIError):
+    """Provider could not be reached."""
+
+
+class PermissionDeniedError(GmailAPIError):
+    """Read access was denied by Gmail."""
+
+
 class RateLimitError(GmailAPIError):
     """Raised when Gmail API returns rate limit (HTTP 429)."""
 
@@ -108,18 +116,17 @@ class _LoopbackCallbackHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
         if "error" in params:
-            err = params["error"][0]
             body = (
                 "<html><body style='font-family:sans-serif;text-align:center;padding:50px;'>"
-                f"<h2 style='color:#c0392b;'>Gmail Authorization Denied</h2>"
-                f"<p>Reason: {err}</p><p>You can close this tab and return to MossMail.</p>"
+                "<h2 style='color:#c0392b;'>Gmail Authorization Denied</h2>"
+                "<p>Authorization was denied. Return to MossMail to retry.</p>"
                 "</body></html>"
             )
         else:
             body = (
                 "<html><body style='font-family:sans-serif;text-align:center;padding:50px;'>"
-                "<h2 style='color:#27ae60;'>Gmail Connected Successfully</h2>"
-                "<p>MossMail has received read-only authorization. "
+                "<h2 style='color:#27ae60;'>Authorization callback received</h2>"
+                "<p>Return to MossMail to check whether authorization completed. "
                 "You can close this tab and return to the application.</p>"
                 "</body></html>"
             )
@@ -138,8 +145,7 @@ def extract_code_from_redirect(redirect_text: str, expected_state: str | None = 
         parsed = urlparse(cleaned)
         params = parse_qs(parsed.query)
         if "error" in params:
-            err = params["error"][0]
-            raise OAuthError(f"Google OAuth authorization denied: {err}")
+            raise OAuthError("Google OAuth authorization denied.")
         codes = params.get("code")
         if not codes:
             raise OAuthError("No authorization code found in the redirect URL.")
@@ -168,9 +174,7 @@ def find_available_loopback_port(preferred_port: int = 8080) -> int:
     return preferred_port
 
 
-def run_loopback_receiver(
-    port: int = 8080, timeout_seconds: float = 60.0
-) -> dict[str, list[str]]:
+def run_loopback_receiver(port: int = 8080, timeout_seconds: float = 60.0) -> dict[str, list[str]]:
     """Run local loopback server to receive the OAuth redirect code.
 
     Binds strictly to 127.0.0.1.
@@ -256,8 +260,7 @@ class GmailProvider(MailboxProvider):
             )
 
         if "error" in params:
-            err = params["error"][0]
-            raise OAuthError(f"Google OAuth authorization denied: {err}")
+            raise OAuthError("Google OAuth authorization denied.")
 
         codes = params.get("code")
         if not codes:
@@ -318,13 +321,19 @@ class GmailProvider(MailboxProvider):
 
         # Validate that granted scope strictly matches or is within read-only scope
         granted_scope = data.get("scope", "")
-        if "mail.google.com" in granted_scope or "gmail.modify" in granted_scope:
+        if set(granted_scope.split()) != {GMAIL_READONLY_SCOPE}:
             raise ScopeViolationError(
                 "Excessive OAuth scope granted by server. "
                 "MossMail strictly rejects modification scopes."
             )
 
         refresh_token = data.get("refresh_token")
+        if not data.get("access_token") or not (
+            refresh_token or self.cred_store.get_secret("gmail_refresh_token")
+        ):
+            raise OAuthError(
+                "OAuth response is missing required tokens. Reconnect and grant offline access."
+            )
         if refresh_token:
             self.cred_store.set_secret(
                 "gmail_refresh_token",
@@ -428,15 +437,17 @@ class GmailProvider(MailboxProvider):
             with httpx.Client(timeout=20.0, trust_env=False) as own:
                 c = self._custom_client or own
                 resp = c.get(f"{GMAIL_API_BASE}/messages", headers=headers, params=params)
+                if resp.status_code == 403:
+                    raise PermissionDeniedError(
+                        "Gmail denied read access. Check account permissions."
+                    )
                 if resp.status_code == 429:
                     raise RateLimitError(
                         "Gmail API rate limit reached. Please wait before retrying."
                     )
                 if resp.status_code in (401, 403):
                     logger.info("gmail_list_unauthorized", extra={"status": resp.status_code})
-                    raise AuthenticationRequiredError(
-                        "Gmail access unauthorized or token expired."
-                    )
+                    raise AuthenticationRequiredError("Gmail access unauthorized or token expired.")
                 if resp.status_code != 200:
                     raise GmailAPIError(
                         f"Gmail API list messages failed with HTTP {resp.status_code}."
@@ -444,7 +455,7 @@ class GmailProvider(MailboxProvider):
                 data = resp.json()
         except httpx.HTTPError as e:
             logger.info("gmail_list_network_error")
-            raise GmailAPIError("Network error connecting to Gmail API.") from e
+            raise NetworkError("Network error connecting to Gmail API.") from e
 
         messages_raw = data.get("messages", [])
         next_page = data.get("nextPageToken")
@@ -469,14 +480,16 @@ class GmailProvider(MailboxProvider):
                 c = self._custom_client or own
                 url = f"{GMAIL_API_BASE}/messages/{provider_id}"
                 resp = c.get(url, headers=headers, params=params)
+                if resp.status_code == 403:
+                    raise PermissionDeniedError(
+                        "Gmail denied read access. Check account permissions."
+                    )
                 if resp.status_code == 429:
                     raise RateLimitError("Gmail API rate limit reached.")
                 if resp.status_code == 404:
                     raise GmailAPIError(f"Message '{provider_id}' not found in mailbox.")
                 if resp.status_code in (401, 403):
-                    raise AuthenticationRequiredError(
-                        "Gmail access unauthorized or token expired."
-                    )
+                    raise AuthenticationRequiredError("Gmail access unauthorized or token expired.")
                 if resp.status_code != 200:
                     raise GmailAPIError(
                         f"Gmail API get message failed with HTTP {resp.status_code}."
@@ -484,7 +497,7 @@ class GmailProvider(MailboxProvider):
                 data = resp.json()
         except httpx.HTTPError as e:
             logger.info("gmail_get_raw_network_error")
-            raise GmailAPIError("Network error fetching raw email from Gmail.") from e
+            raise NetworkError("Network error fetching raw email from Gmail.") from e
 
         raw_b64 = data.get("raw", "")
         if not raw_b64:
@@ -511,16 +524,27 @@ class GmailProvider(MailboxProvider):
                 c = self._custom_client or own
                 url = f"{GMAIL_API_BASE}/messages/{provider_id}"
                 resp = c.get(url, headers=headers, params=params)
-                if resp.status_code == 200:
-                    meta = resp.json()
-                    thread_id = meta.get("threadId")
-                    raw_ms = meta.get("internalDate")
-                    if raw_ms:
-                        internal_date = datetime.fromtimestamp(int(raw_ms) / 1000, tz=UTC)
-        except Exception:
-            pass
+                if resp.status_code == 403:
+                    raise PermissionDeniedError("Gmail denied message metadata access.")
+                if resp.status_code == 401:
+                    raise AuthenticationRequiredError("Gmail authorization expired.")
+                if resp.status_code == 429:
+                    raise RateLimitError("Gmail API rate limit reached.")
+                if resp.status_code != 200:
+                    raise GmailAPIError("Gmail message metadata could not be retrieved.")
+                meta = resp.json()
+                thread_id = meta.get("threadId")
+                if not thread_id:
+                    raise GmailAPIError("Gmail response is missing thread metadata.")
+                raw_ms = meta.get("internalDate")
+                if raw_ms:
+                    internal_date = datetime.fromtimestamp(int(raw_ms) / 1000, tz=UTC)
+        except httpx.HTTPError:
+            raise NetworkError("Network error fetching Gmail message metadata.") from None
 
         raw_bytes = self.get_message_raw(provider_id)
+        if not raw_bytes:
+            raise GmailAPIError("Gmail response contained no message content.")
         return parse_email_to_message(
             raw_bytes,
             provider_id=provider_id,

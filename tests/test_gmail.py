@@ -91,7 +91,7 @@ def test_extract_code_from_redirect():
 
     # 3. Access denied error in redirect URL
     denied_url = "http://127.0.0.1:8080/?error=access_denied&state=expected_state"
-    with pytest.raises(OAuthError, match="authorization denied: access_denied"):
+    with pytest.raises(OAuthError, match="authorization denied"):
         extract_code_from_redirect(denied_url, expected_state="expected_state")
 
     # 4. Bare code string fallback
@@ -446,7 +446,7 @@ def test_authenticate_via_loopback_denial(tmp_path, monkeypatch):
         lambda port, timeout_seconds: {"error": ["access_denied"]},
     )
 
-    with pytest.raises(OAuthError, match="authorization denied: access_denied"):
+    with pytest.raises(OAuthError, match="authorization denied"):
         provider.authenticate_via_loopback(open_browser=False, auth_info=auth_info)
 
 
@@ -508,3 +508,65 @@ def test_loopback_server_handles_favicon_and_callback():
     server.server_close()
 
     assert server.query_params == {"code": ["testcode"], "state": ["teststate"]}
+
+
+@pytest.mark.parametrize("scope", ["", "openid", "https://www.googleapis.com/auth/gmail.send"])
+def test_unexpected_granted_scope_never_saves_tokens(tmp_path, scope):
+    store = CredentialStore(fallback_path=tmp_path / "creds.json", keyring_backend=MockKeyring())
+    client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda r: httpx.Response(
+                200,
+                json={
+                    "access_token": "private-access",
+                    "refresh_token": "private-refresh",
+                    "scope": scope,
+                },
+            )
+        )
+    )
+    provider = GmailProvider(client_id="client", credential_store=store, client=client)
+    with pytest.raises(ScopeViolationError):
+        provider.exchange_code_for_tokens("code", "verifier", "http://127.0.0.1:1234/")
+    assert store.get_secret("gmail_refresh_token") is None
+    assert not provider.is_connected()
+
+
+def test_missing_oauth_tokens_cannot_report_authenticated(tmp_path):
+    store = CredentialStore(fallback_path=tmp_path / "creds.json", keyring_backend=MockKeyring())
+    client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda r: httpx.Response(
+                200,
+                json={
+                    "scope": "https://www.googleapis.com/auth/gmail.readonly",
+                },
+            )
+        )
+    )
+    provider = GmailProvider(client_id="client", credential_store=store, client=client)
+    with pytest.raises(OAuthError, match="missing required tokens"):
+        provider.exchange_code_for_tokens("code", "verifier", "http://127.0.0.1:1234/")
+    assert not provider.is_connected()
+
+
+@pytest.mark.parametrize("metadata", [{}, {"threadId": "t1"}])
+def test_incomplete_gmail_response_does_not_invent_message(tmp_path, metadata):
+    from mossmail.mailbox.gmail import GmailAPIError
+
+    store = CredentialStore(fallback_path=tmp_path / "creds.json", keyring_backend=MockKeyring())
+    store.set_secret("gmail_refresh_token", "test-refresh")
+    store.set_secret("gmail_client_id", "test-client")
+
+    def handler(request):
+        if "oauth2.googleapis.com/token" in str(request.url):
+            return httpx.Response(200, json={"access_token": "test-access"})
+        if "format=metadata" in str(request.url):
+            return httpx.Response(200, json=metadata)
+        return httpx.Response(200, json={"raw": ""})
+
+    provider = GmailProvider(
+        credential_store=store, client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    with pytest.raises(GmailAPIError):
+        provider.get_message("test-message")

@@ -1,3 +1,5 @@
+> Historical prototype record. Demo behavior and screenshots described below are retired from the product. See the [current README](../README.md) and [verification notes](validation.md) for supported behavior.
+
 *This is a submission for the [Hacktoberfest Open-Source AI Challenge Week 3: Slow and Steady](https://dev.to/challenges/hacktoberfest-week3-2026-10-19). Built with Codex assistance. #devchallenge #hf26challenge*
 
 ## What I Built

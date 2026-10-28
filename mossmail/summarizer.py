@@ -29,7 +29,7 @@ def fallback(message: Message, note: str) -> Summary:
     return Summary(
         summary=excerpt,
         proposed_action="Read the original and follow the policy recommendation below.",
-        source="demo_fallback",
+        source="deterministic_excerpt",
         model=None,
         note=note,
     )
@@ -61,7 +61,9 @@ class LocalSummarizer(LLMProvider):
 
     def summarize(self, message: Message) -> Summary:
         if os.getenv("MOSSMAIL_SUMMARIZER", "auto") == "fallback":
-            return fallback(message, "Deterministic demo excerpt; local AI is disabled.")
+            return fallback(
+                message, "Deterministic original-message excerpt; local AI is disabled."
+            )
         latest, ambiguous = latest_reply(message.body)
         if message.parse_uncertain or ambiguous or not latest:
             return fallback(message, "Parsing is uncertain; inspect the original before acting.")
@@ -155,16 +157,16 @@ class GeminiSummarizer(LLMProvider):
 
     def summarize(self, message: Message) -> Summary:
         if os.getenv("MOSSMAIL_SUMMARIZER", "auto") == "fallback":
-            return fallback(message, "Deterministic demo excerpt; AI inference is disabled.")
+            return fallback(
+                message, "Deterministic original-message excerpt; AI inference is disabled."
+            )
         if not self.api_key:
             return fallback(message, "Gemini API key is not configured; deterministic excerpt.")
         latest, ambiguous = latest_reply(message.body)
         if message.parse_uncertain or ambiguous or not latest:
             return fallback(message, "Parsing is uncertain; inspect the original before acting.")
 
-        endpoint = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/{self._endpoint_model}:generateContent"
-        )
+        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{self._endpoint_model}:generateContent"
         payload = {
             "contents": [
                 {

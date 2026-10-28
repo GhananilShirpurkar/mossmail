@@ -23,6 +23,10 @@ class InsecureStorageError(Exception):
     """Raised when secure OS keyring is unavailable and consent for fallback was not granted."""
 
 
+class CredentialRemovalError(Exception):
+    """Credential cleanup could not be verified; never include backend details."""
+
+
 class CredentialStore:
     def __init__(
         self,
@@ -128,8 +132,21 @@ class CredentialStore:
         if self.is_keyring_usable():
             try:
                 self.keyring.delete_password(SERVICE_NAME, key_name)
-            except (KeyringError, PasswordDeleteError, Exception):
-                pass
+            except PasswordDeleteError:
+                # A missing password is already removed, but verify that outcome.
+                try:
+                    if self.keyring.get_password(SERVICE_NAME, key_name):
+                        raise CredentialRemovalError("Credential removal could not be verified.")
+                except CredentialRemovalError:
+                    raise
+                except Exception:
+                    raise CredentialRemovalError(
+                        "Credential removal could not be verified."
+                    ) from None
+            except Exception:
+                raise CredentialRemovalError(
+                    "Keyring credential removal failed. Unlock the keyring and retry."
+                ) from None
 
         # 2. Delete from fallback file
         if self.fallback_path.exists():
@@ -149,8 +166,8 @@ class CredentialStore:
             try:
                 if self.keyring.get_password(SERVICE_NAME, key_name):
                     return "keyring"
-            except KeyringError:
-                pass
+            except Exception:
+                logger.info("keyring_status_unavailable")
         if self.fallback_path.exists():
             data = self._read_fallback_file()
             if key_name in data:
@@ -219,11 +236,8 @@ class CredentialStore:
         os.replace(temp_path, self.fallback_path)
 
     def _unlink_fallback(self) -> None:
-        try:
-            if self.fallback_path.exists():
-                self.fallback_path.unlink()
-        except OSError:
-            pass
+        if self.fallback_path.exists():
+            self.fallback_path.unlink()
 
 
 def validate_gemini_key(
