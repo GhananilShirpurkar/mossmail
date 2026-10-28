@@ -39,7 +39,10 @@ def test_high_risk_is_never_automatically_suppressed(message, text):
 
 
 def test_protected_sender_is_case_insensitive(message):
-    result = decide(message.model_copy(update={"sender": " MAYA@CEDAR.EXAMPLE "}))
+    result = decide(
+        message.model_copy(update={"sender": " MAYA@CEDAR.EXAMPLE "}),
+        policy=Policy(protected_senders=frozenset({"maya@cedar.example"})),
+    )
     assert result.state == State.REVIEW and result.protected
 
 

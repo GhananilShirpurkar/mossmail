@@ -1,1 +1,1 @@
-"""MossMail: safe, explainable email triage using synthetic data by default."""
+"""MossMail: local-first, read-only email triage with deterministic policy."""

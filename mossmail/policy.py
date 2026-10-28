@@ -16,7 +16,7 @@ RISK_TERMS = {
 
 @dataclass(frozen=True)
 class Policy:
-    protected_senders: frozenset[str] = frozenset({"maya@cedar.example", "security@cedar.example"})
+    protected_senders: frozenset[str] = frozenset()
     defer_hours: float = 24
     max_defer_risk: float = 0.25
     max_uncertainty: float = 0.25
@@ -27,7 +27,7 @@ class Policy:
 
     @classmethod
     def from_env(cls) -> "Policy":
-        default = "maya@cedar.example,security@cedar.example"
+        default = ""
         return cls(
             protected_senders=frozenset(
                 s.strip().casefold()

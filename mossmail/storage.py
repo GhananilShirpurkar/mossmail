@@ -2,7 +2,7 @@
 
 import json
 import sqlite3
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -18,6 +18,7 @@ class Store:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.executescript("""
+                CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS messages (
                     id TEXT PRIMARY KEY, payload TEXT NOT NULL, state TEXT NOT NULL,
                     parked INTEGER NOT NULL DEFAULT 0, due TEXT, override TEXT,
@@ -39,6 +40,19 @@ class Store:
                 yield db
         finally:
             db.close()
+
+    def setting(self, key: str, default: str = "") -> str:
+        with self.connect() as db:
+            row = db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+        return row["value"] if row else default
+
+    def set_setting(self, key: str, value: str):
+        with self.connect() as db:
+            db.execute(
+                "INSERT INTO settings(key,value) VALUES(?,?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (key, value),
+            )
 
     def seed(self, messages: list[Message], now: datetime | None = None):
         now = now or datetime.now(UTC)
@@ -81,16 +95,18 @@ class Store:
         cycle: int | None = None,
         now: datetime | None = None,
         wait_seconds: float | None = None,
+        _db=None,
     ) -> dict:
         if kind not in {"park", "resolve", "review", "followup", "risk", "expire"}:
             raise ValueError("Unknown transition")
-        if mode not in {"simulation", "temporal"}:
+        if mode not in {"simulation", "temporal", "local"}:
             raise ValueError("Unknown event mode")
         now = now or datetime.now(UTC)
         if now.tzinfo is None:
             raise ValueError("Use timezone-aware timestamps")
-        with self.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
+        with self.connect() if _db is None else nullcontext(_db) as db:
+            if not db.in_transaction:
+                db.execute("BEGIN IMMEDIATE")
             prior = db.execute("SELECT * FROM events WHERE event_key=?", (key,)).fetchone()
             if prior:
                 if prior["message_id"] != message_id or prior["kind"] != kind:

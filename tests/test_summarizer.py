@@ -39,13 +39,13 @@ def test_structured_success_is_advisory_only(message, monkeypatch):
 def test_invalid_output_falls_back(message, content, monkeypatch):
     monkeypatch.delenv("MOSSMAIL_SUMMARIZER", raising=False)
     result = LocalSummarizer(client=client_with(content)).summarize(message)
-    assert result.source == "demo_fallback"
+    assert result.source == "deterministic_excerpt"
 
 
 def test_missing_model_does_not_claim_inference(message, monkeypatch):
     monkeypatch.delenv("MOSSMAIL_SUMMARIZER", raising=False)
     result = LocalSummarizer(client=client_with("", "other-model")).summarize(message)
-    assert result.source == "demo_fallback" and "not installed" in result.note
+    assert result.source == "deterministic_excerpt" and "not installed" in result.note
 
 
 def test_unavailable_and_privacy_safe_logging(message, caplog, monkeypatch):
@@ -61,7 +61,7 @@ def test_unavailable_and_privacy_safe_logging(message, caplog, monkeypatch):
         result = LocalSummarizer(
             client=httpx.Client(transport=httpx.MockTransport(handler))
         ).summarize(private)
-    assert result.source == "demo_fallback"
+    assert result.source == "deterministic_excerpt"
     assert "SECRET" not in caplog.text and "private@example.test" not in caplog.text
     assert "local_summary_unavailable" in caplog.text
 
@@ -96,4 +96,4 @@ def test_mail_instructions_cannot_authorize_actions(message, monkeypatch):
 def test_malformed_model_list_fails_safe(message, monkeypatch):
     monkeypatch.delenv("MOSSMAIL_SUMMARIZER", raising=False)
     client = httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(200, json=[])))
-    assert LocalSummarizer(client=client).summarize(message).source == "demo_fallback"
+    assert LocalSummarizer(client=client).summarize(message).source == "deterministic_excerpt"
