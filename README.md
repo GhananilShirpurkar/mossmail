@@ -6,7 +6,7 @@ MossMail is a local-first email triage assistant. Import up to 20 recent Gmail i
 
 ## See it in a minute
 
-[![MossMail's current UI with a clearly labeled fictional test inbox](docs/screenshots/current/demo-preview.png)](docs/mossmail-demo-current.mp4)
+[![Animated walkthrough of MossMail with a clearly labeled fictional test inbox](docs/mossmail-demo-current.gif)](docs/mossmail-demo-current.mp4)
 
 **[Watch the 60-second walkthrough](docs/mossmail-demo-current.mp4)** · [What the recording demonstrates](docs/demo.md)
 

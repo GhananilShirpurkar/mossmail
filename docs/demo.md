@@ -1,6 +1,6 @@
 # Current 60-second walkthrough
 
-[Watch the video](mossmail-demo-current.mp4)
+[Animated preview](mossmail-demo-current.gif) · [Watch the full-resolution video](mossmail-demo-current.mp4)
 
 This is a continuous recording of the current local Streamlit application, using a temporary SQLite database. A **TEST INBOX** banner and message subjects identify fictional fixtures. The capture wrapper provides that banner; it is not a product mode or a claim that a fresh installation contains messages.
 
@@ -26,3 +26,5 @@ This recording used the already installed system Chrome and FFmpeg with existing
 To repeat the sequence manually, use a new `MOSSMAIL_DB` and `MOSSMAIL_CREDS_FILE`, disable keyring access, and set `MOSSMAIL_SUMMARIZER=fallback`. Open the actual app, verify the empty state, and explicitly create labeled synthetic fixtures only in that separate database before recording the steps above. Never point capture tools at your normal inbox database. The existing `scripts/capture_ui.py` automates isolated still screenshots; it does not produce this video.
 
 The [prototype recording](demo-prototype.md) is retained as historical evidence and shows retired behavior. It is not the video linked from the README or public landing entrypoint.
+
+The README embeds the supplied **480 × 333**, **1.17 MB** GIF, which loops through the complete **59.58-second** walkthrough. Its animation timing was verified across all **715 frames**. The full-resolution MP4 remains available by clicking the preview or its video link.
