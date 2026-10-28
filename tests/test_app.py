@@ -94,7 +94,11 @@ def test_public_landing_never_opens_private_state(app_env, monkeypatch):
     app = AppTest.from_file(str(Path(__file__).parents[1] / "streamlit_app.py")).run()
     assert not app.exception
     assert not app_env.exists()
-    assert any("hosted sample inbox has been retired" in item.value for item in app.info)
+    assert any(
+        "recorded walkthrough, not an interactive mailbox" in item.value for item in app.info
+    )
+    assert len(app.get("video")) == 1
+    assert any("fictional test inbox" in item.value for item in app.caption)
 
 
 def test_failed_ai_request_shows_real_excerpt_without_success(app_env, message):

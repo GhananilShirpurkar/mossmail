@@ -1,17 +1,38 @@
 # MossMail
 
-MossMail is a local-first email triage assistant. Import recent Gmail messages with read-only access, inspect deterministic triage recommendations, and decide what needs your attention. AI summaries are optional advice. Nothing is sent, drafted, deleted, archived, labeled, or marked read in Gmail.
+**Read-only Gmail triage with transparent rules and local decisions.**
+
+MossMail is a local-first email triage assistant. Import up to 20 recent Gmail inbox messages at a time, inspect rule-based recommendations, and record what needs review, what can wait, and what you have resolved. AI summaries and durable background timers are optional integrations configured separately. Nothing is sent, drafted, deleted, archived, labeled, or marked read in Gmail.
+
+## See it in a minute
+
+[![Animated walkthrough of MossMail with a clearly labeled fictional test inbox](docs/mossmail-demo-current.gif)](docs/mossmail-demo-current.mp4)
+
+**[Watch the 60-second walkthrough](docs/mossmail-demo-current.mp4)** · [What the recording demonstrates](docs/demo.md)
+
+The recording shows the actual local application: optional setup, an empty first run, a labeled test inbox, policy explanations, local parking, resolution, and decisions surviving a reload. All messages are fictional. No Gmail connection, AI inference, or Temporal service is used in this recording.
+
+The [hosted landing page](https://mossmail.streamlit.app/) presents the recording and local setup instructions. It is not an interactive mailbox. Reviewing your own mail requires a local installation and your own Google OAuth configuration.
+
+## Default behavior and optional integrations
+
+- **Fresh installation:** an empty inbox and dismissible setup; no account or AI key is required to open the app.
+- **With Gmail connected:** manual, read-only imports, deterministic policy explanations, original-message excerpts, and persisted local review, resolve, and park decisions. You still handle the underlying email yourself.
+- **Optional summaries:** Gemini with your key, or a separately installed Ollama model, only when you request a summary. AI cannot authorize a policy decision.
+- **Optional background timers:** a separate Temporal server, worker, and CLI. The normal UI checks local deadlines when the app runs.
+
+There is no measured classification accuracy or time-saving claim. Risk scores are heuristics, and this remains a single-user local tool.
 
 ## Run locally
 
-Requires Python 3.12+.
+Requires Python 3.12+. The app uses the runtime requirements below; contributor tests and screenshot tooling use the separate `requirements-dev.txt`.
 
 ```bash
 git clone https://github.com/GhananilShirpurkar/mossmail.git
 cd mossmail
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements-dev.txt
+python -m pip install -r requirements.txt
 streamlit run app.py --server.address 127.0.0.1
 ```
 
@@ -49,7 +70,7 @@ Environment configuration is supported: `GEMINI_API_KEY`, `GEMINI_MODEL`, `GMAIL
 
 SQLite stores message text, local decisions, event history, onboarding dismissal, provider preference, and synchronization status in `.local/mossmail.sqlite3`. Override with `MOSSMAIL_DB`; override credential-file location with `MOSSMAIL_CREDS_FILE`. AI keys and OAuth tokens are never stored in the settings table. Local message storage is not encrypted. Protect your user account and backups.
 
-This is a **single-user local application**, without multi-user authentication or tenant isolation. `streamlit_app.py` is a safe public landing page with local run instructions; it does not access credentials or databases. Do not expose it publicly with personal credentials. Historical screenshots, videos, and submission documents describe the earlier prototype and are not current product evidence.
+This is a **single-user local application**, without multi-user authentication or tenant isolation. `streamlit_app.py` is a safe public landing page with local run instructions; it does not access credentials or databases. Do not expose it publicly with personal credentials. The recording above shows the current local UI. [Earlier prototype media](docs/demo-prototype.md) and historical submission documents are retained for provenance and are not evidence of current behavior.
 
 For trusted senders that should always stay visible, set the comma-separated `MOSSMAIL_PROTECTED_SENDERS` environment variable. No fictional protected senders are configured by default.
 
@@ -69,7 +90,20 @@ python -m mossmail.temporal_cli status --message YOUR_STORED_MESSAGE_ID
 
 `python scripts/seed_temporal.py` is an explicitly invoked development tool that seeds a separate `.local/temporal.sqlite3` database (or the path explicitly supplied through `MOSSMAIL_DB`). Test fixtures and `data/demo_emails.json` are never loaded by the product entrypoints. The optional hosted TabPFN experiment remains a separate consent-gated CLI; it is not the inbox scoring default.
 
+## Design decisions to inspect
+
+The original article supplied the idea of local summaries and deferred attention. MossMail's implementation makes these boundaries explicit:
+
+- **A recommendation cannot mutate Gmail.** The [Gmail adapter](mossmail/mailbox/gmail.py) imports messages with read-only OAuth, state validation, and PKCE; the [local event ledger](mossmail/storage.py) records review, resolve, and park decisions separately.
+- **AI advises; deterministic rules decide.** The [decision engine](mossmail/decision_engine.py) keeps sensitive, incomplete, or uncertain messages visible. The [summarizer](mossmail/summarizer.py) has no mailbox tools and labels original excerpts when inference is unavailable.
+- **Waiting has an explicit scope.** Local deadlines are checked on app runs; the separate [Temporal workflow](mossmail/workflows.py) supplies durable timers, with idempotent writes and parking-cycle checks in storage.
+- **Evidence has limits.** [Regression and replay tests](tests/) check behavior and safety invariants. They do not establish real-mail accuracy, saved time, or production readiness.
+
+These are implementation choices reviewers can trace in code, rather than a claim that the underlying concept is original. Codex assisted with implementation, tests, documentation, and browser verification; attribution is below.
+
 ## Verification
+
+Install contributor tooling with `python -m pip install -r requirements-dev.txt` before running these checks. This includes Playwright as an optional capture dependency; browser downloads are needed only for browser captures when a compatible installed browser is not supplied.
 
 ```bash
 ruff check .

@@ -25,12 +25,28 @@ st.set_page_config(page_title="MossMail", layout="wide")
 st.html((ROOT / "mossmail/style.html").read_text())
 if globals().get("HOSTED_PREVIEW", False):
     st.title("MossMail")
-    st.info(
-        "Run MossMail on your own machine to connect Gmail and store private messages. The hosted sample inbox has been retired."
-    )
-    st.code("streamlit run app.py --server.address 127.0.0.1", language="bash")
+    st.write("Read-only Gmail triage with transparent rules and local decisions.")
+    st.video(str(ROOT / "docs/mossmail-demo-current.mp4"))
     st.caption(
-        "This preview does not access credentials, create an inbox, or make provider requests."
+        "60-second local UI recording · Labeled fictional test inbox · No Gmail connection, AI inference, or Temporal service."
+    )
+    st.info(
+        "Run MossMail on your own machine to connect Gmail and store private messages. This page is a recorded walkthrough, not an interactive mailbox."
+    )
+    st.code(
+        "git clone https://github.com/GhananilShirpurkar/mossmail.git\n"
+        "cd mossmail\n"
+        "python3 -m venv .venv\n"
+        "source .venv/bin/activate\n"
+        "python -m pip install -r requirements.txt\n"
+        "streamlit run app.py --server.address 127.0.0.1",
+        language="bash",
+    )
+    st.markdown(
+        "[Setup and security boundaries](https://github.com/GhananilShirpurkar/mossmail#readme)"
+    )
+    st.caption(
+        "Gmail requires your own Desktop OAuth client. AI summaries and background timers are optional. This page does not access credentials, create an inbox, or make provider requests."
     )
     st.stop()
 store = Store(Path(os.getenv("MOSSMAIL_DB", str(ROOT / ".local/mossmail.sqlite3"))))

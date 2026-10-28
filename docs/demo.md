@@ -1,34 +1,30 @@
-> Historical prototype record. Demo behavior and screenshots described below are retired from the product. See the [current README](../README.md) and [verification notes](validation.md) for supported behavior.
+# Current 60-second walkthrough
 
-# Real UI demo
+[Animated preview](mossmail-demo-current.gif) · [Watch the full-resolution video](mossmail-demo-current.mp4)
 
-All shown messages, sender identities, and organizations are fictional. The recording is captured with Playwright from the actual running Streamlit application. The delivered recording is 107.08 seconds at 1440 × 1100. It has no voiceover, fabricated frames, or real mailbox content.
+This is a continuous recording of the current local Streamlit application, using a temporary SQLite database. A **TEST INBOX** banner and message subjects identify fictional fixtures. The capture wrapper provides that banner; it is not a product mode or a claim that a fresh installation contains messages.
 
-Artifacts:
+## Walkthrough
 
-- `screenshots/01-inbox.png` — primary dashboard, attention counts, and local Gemma reading assistance.
-- `screenshots/02-message.png` — selected invoice with summary, next-step advice, risk reasons, and original message.
-- `screenshots/03-parked.png` — waiting room with visible review deadlines.
-- `screenshots/04-history.png` — simulated follow-up escalation, timer expiry, and seed user resolution.
-- `mossmail-demo.webm` — genuine browser session showing the above navigation and workflow simulation.
+- **00–07 seconds:** optional first-run setup.
+- **07–12 seconds:** skip setup and see a genuinely empty inbox.
+- **12–24 seconds:** the capture tool explicitly loads two fictional messages into its temporary database, then reloads the UI. Inspect the invoice, financial review rule, and original text.
+- **24–30 seconds:** open a locally curated reading-list fixture and inspect its safe-to-defer recommendation. The fixture explicitly sets trusted bulk metadata; this is not an automatic classification of unknown Gmail senders.
+- **30–38 seconds:** choose **Park for later** and inspect its persisted local review deadline in **Parked**.
+- **38–45 seconds:** mark that fixture resolved and inspect the actual local event history in **Activity**.
+- **45–53 seconds:** inspect optional integration settings without configuring an account or key.
+- **53–60 seconds:** return to the inbox and reload; the resolved decision persists and the financial message remains in review.
 
-The application is configured with `OLLAMA_MODEL=gemma2:2b` for this capture. That model was already installed locally. Model loading/inference may be visible in the recording. The source label in the UI is authoritative: `LOCAL AI` means a validated Ollama response; `DEMO FALLBACK` means an excerpt.
+No real inbox, OAuth flow, provider account, AI inference, or Temporal worker is exercised here. All visible excerpts are labeled **ORIGINAL EXCERPT · NO AI**. No mailbox action or time-saving claim is implied. Local parking is real SQLite state; its deadline is checked when the UI runs, not by a background service.
 
-The waiting-room controls are simulations. The real Temporal workflow is exercised separately by `MOSSMAIL_TEMPORAL_TESTS=1 pytest -q tests/test_temporal.py`, or by running the server and worker commands in the README. No screenshot implies that an email has been archived or that the UI simulation is a durable server.
+## Capture boundary
 
-## Reproduce
+The recorder strips Gmail, Gemini, Ollama, and MossMail environment variables, disables the OS keyring, sets a temporary credential-file path, and forces deterministic excerpts. It starts the real app on loopback in an isolated browser profile. The database and profile are removed afterward. The capture creates no credential file and verifies parking, resolution, reload persistence, and absence of browser errors.
 
-```bash
-source .venv/bin/activate
-python -m playwright install chromium ffmpeg
-# First terminal, from the repository root. Use a new database filename on each run.
-OLLAMA_MODEL=gemma2:2b OLLAMA_TIMEOUT=90 \
-  MOSSMAIL_DB=.local/capture-new.sqlite3 \
-  streamlit run app.py --server.port 8502
-# Second terminal, same activated environment:
-python scripts/capture_demo.py --url http://127.0.0.1:8502
-```
+This recording used the already installed system Chrome and FFmpeg with existing browser automation tooling. No browser, Python package, model, or other dependency was downloaded or installed for it. The delivered MP4 is a compatible encoding of the continuous raw WebM; no scenes are fabricated or sped up.
 
-The capture script writes PNGs and a WebM file under `docs/`. Raw temporary recordings remain under ignored `.local/video/`. It changes only the synthetic state in the configured capture database. It navigates Inbox → financial message → Parked → follow-up → timer expiry → Activity.
+To repeat the sequence manually, use a new `MOSSMAIL_DB` and `MOSSMAIL_CREDS_FILE`, disable keyring access, and set `MOSSMAIL_SUMMARIZER=fallback`. Open the actual app, verify the empty state, and explicitly create labeled synthetic fixtures only in that separate database before recording the steps above. Never point capture tools at your normal inbox database. The existing `scripts/capture_ui.py` automates isolated still screenshots; it does not produce this video.
 
-For a fallback-only demonstration, set `MOSSMAIL_SUMMARIZER=fallback` on the Streamlit process; the UI will label the source honestly. Use an independent database for the actual Temporal demonstration.
+The [prototype recording](demo-prototype.md) is retained as historical evidence and shows retired behavior. It is not the video linked from the README or public landing entrypoint.
+
+The README embeds the supplied **480 × 333**, **1.17 MB** GIF, which loops through the complete **59.58-second** walkthrough. Its animation timing was verified across all **715 frames**. The full-resolution MP4 remains available by clicking the preview or its video link.
